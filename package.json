@@ -1,0 +1,11 @@
+{
+  "name": "agcn-live",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0"
+  }
+}
