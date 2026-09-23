@@ -79,7 +79,7 @@
     text('connection-label', disconnected ? 'Servidor indisponível' : connected ? 'Conexão ativa' : connecting ? 'Aguardando conexão' : 'Aguardando conexão');
     const dot = document.createElement('span'); dot.className = 'tiny-dot'; statusLabel.prepend(dot);
     text('monitor-current', busy ? `${label(s.platform)} / ${connected ? 'LIVE CONECTADA' : readable(s.status).toUpperCase()}` : 'MONITORAMENTO INATIVO');
-    text('backend-status', disconnected ? 'Servidor de monitoramento indisponível' : busy ? `${label(s.platform)} • ${readable(s.status)}` : 'Pronto para monitorar');
+    text('backend-status', disconnected ? 'Servidor de monitoramento indisponível' : busy ? `${label(s.platform)} • ${connected ? 'Conectado' : readable(s.status)}` : 'Pronto para monitorar');
     elements.start.classList.toggle('hidden', busy); elements.stop.classList.toggle('hidden', !busy);
     elements.start.disabled = disconnected || requestPending;
     elements.stop.disabled = requestPending;
