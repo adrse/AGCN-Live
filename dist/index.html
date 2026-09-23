@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f5f3">
+  <meta name="description" content="AGCN LIVE — painel operacional de monitoramento de lives e orientações em tempo real.">
+  <title>AGCN LIVE — Painel operacional</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/config.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="masthead">
+      <div class="brand"><div class="brand-symbol" aria-hidden="true"><span>A</span></div><div class="brand-wordmark"><strong>AGCN <span>LIVE</span></strong><small>PAINEL OPERACIONAL</small></div></div>
+      <div class="masthead-right"><span id="clock" class="clock" aria-label="Horário atual">—</span><span id="global-status" class="connection-pill"><span class="state-dot"></span>Desconectado</span></div>
+    </header>
+
+    <main>
+      <section class="intro" aria-label="Visão geral"><div><span class="eyebrow">CENTRAL DE MONITORAMENTO</span><h1>Sua live, em foco.</h1><p>Acompanhe o ritmo da transmissão e receba orientações no momento certo.</p></div><div class="intro-mark" aria-hidden="true">AGCN<span> / </span>LIVE</div></section>
+
+      <section class="control-panel surface" aria-labelledby="setup-title">
+        <div class="surface-header"><div><span class="section-index">01 / CONFIGURAÇÃO</span><h2 id="setup-title">Iniciar monitoramento</h2></div><span id="connection-label" class="quiet-status"><span class="tiny-dot"></span>Aguardando conexão</span></div>
+        <form id="start-form" autocomplete="off">
+          <div class="form-grid"><fieldset class="platform-field"><legend>PLATAFORMA</legend><div class="segmented platform-switch" role="radiogroup" aria-label="Plataforma"><label><input type="radio" name="platform" value="shopee" checked><span>Shopee</span></label><label><input type="radio" name="platform" value="tiktok"><span>TikTok</span></label></div></fieldset>
+            <div class="live-input-field"><label for="live-input">LINK OU USUÁRIO DA LIVE</label><input id="live-input" name="live" required placeholder="Cole o link da LIVE Shopee" spellcheck="false" autocapitalize="off" aria-describedby="input-help"><small id="input-help">Link curto br.shp.ee ou URL da LIVE com sessão.</small></div>
+            <div class="action-field"><button id="start-button" class="primary-button" type="submit"><span class="button-icon" aria-hidden="true">↗</span> INICIAR MONITORAMENTO</button><button id="stop-button" class="stop-button hidden" type="button">ENCERRAR MONITORAMENTO <span aria-hidden="true">×</span></button></div>
+          </div>
+        </form>
+        <div class="control-footer"><div class="footer-status"><span id="platform-current">SHOPEE SELECIONADA</span><span class="footer-separator" aria-hidden="true">/</span><span id="monitor-current">MONITORAMENTO INATIVO</span></div><span id="last-event">Aguardando dados da LIVE</span></div>
+      </section>
+
+      <div id="notice" class="notice hidden" role="alert"></div>
+
+      <section class="overview" aria-label="Indicadores da transmissão"><div class="overview-heading"><span class="section-index">02 / VISÃO EM TEMPO REAL</span><span id="overview-caption">Dados exibidos conforme recebidos da plataforma</span></div><div class="metric-grid"><article class="metric surface"><span>AUDIÊNCIA</span><strong id="metric-viewers">—</strong><small>Espectadores agora</small></article><article class="metric surface"><span>CURTIDAS</span><strong id="metric-likes">—</strong><small>Recebidas na LIVE</small></article><article class="metric surface"><span id="metric-three-label">COMPARTILHAMENTOS</span><strong id="metric-three">—</strong><small id="metric-three-note">Quando disponível</small></article><article class="metric surface"><span id="metric-four-label">PRODUTOS</span><strong id="metric-four">—</strong><small id="metric-four-note">Quando disponível</small></article></div></section>
+
+      <section class="workspace" aria-label="Coaches e comentários">
+        <article class="coach-panel live-panel surface" aria-labelledby="live-title"><div class="panel-topline"><span class="section-index">03 / ORIENTAÇÃO DA LIVE</span><span id="live-status" class="panel-state"><span class="tiny-dot"></span>Aguardando</span></div><div class="panel-heading"><div class="panel-icon" aria-hidden="true">✳</div><div><h2 id="live-title">LIVE COACH</h2><p>Sinais da transmissão, traduzidos em orientação.</p></div></div>
+          <div class="coach-stage" id="live-stage"><div class="stage-top"><span id="live-category" class="category-label">EM TEMPO REAL</span><span id="live-time" class="message-time"></span></div><div id="live-message" class="coach-message empty">As orientações aparecerão aqui durante a LIVE.</div><div class="stage-bottom"><span id="live-priority" class="priority-label"></span><span id="live-timer" class="ttl-label"></span></div><div class="ttl-track"><span id="live-progress"></span></div></div>
+          <div class="panel-controls"><span>EXIBIR ALERTAS</span><div id="alert-modes" class="segmented segmented-small" role="group" aria-label="Filtro do Live Coach"><button type="button" data-mode="all" class="selected">Todos</button><button type="button" data-mode="high">Prioridade Alta</button><button type="button" data-mode="essential">Essenciais</button></div></div>
+        </article>
+
+        <article id="sales-panel" class="coach-panel sales-panel surface" aria-labelledby="sales-title"><div class="panel-topline"><span class="section-index">04 / ORIENTAÇÃO DE VENDAS</span><span id="sales-status" class="panel-state"><span class="tiny-dot"></span>Aguardando</span></div><div class="panel-heading"><div class="panel-icon sales-icon" aria-hidden="true">↗</div><div><h2 id="sales-title">SALES COACH</h2><p>Ideias de fala para o produto em destaque.</p></div></div><span class="shopee-badge">FUNCIONALIDADES EXCLUSIVAS PARA SHOPEE</span>
+          <div class="coach-stage" id="sales-stage"><div class="stage-top"><span id="sales-category" class="category-label">PRODUTO EM FOCO</span><span id="sales-time" class="message-time"></span></div><div id="sales-message" class="coach-message empty">Aguardando dados do produto da Shopee.</div><div class="stage-bottom"><span id="sales-product" class="product-label">Nenhum produto identificado</span><span id="sales-timer" class="ttl-label"></span></div><div class="ttl-track"><span id="sales-progress"></span></div></div>
+          <div id="product-conflict" class="product-conflict hidden" role="status"></div>
+          <div class="panel-controls sales-controls"><span>ESTILO DE COMUNICAÇÃO</span><div id="sales-styles" class="segmented segmented-small" role="group" aria-label="Estilo do Sales Coach"><button type="button" data-style="equilibrado" class="selected">Equilibrado</button><button type="button" data-style="pressao_feira">Pressão / Feira</button></div></div>
+          <details id="product-details" class="product-details"><summary><span><span class="disclosure-plus" aria-hidden="true">+</span> Informações manuais do produto</span><span class="detail-hint">Opcional</span></summary><form id="product-form"><div class="product-form-grid"><div><label for="seller-price">PREÇO INFORMADO PELO VENDEDOR</label><input id="seller-price" inputmode="decimal" placeholder="Ex.: 49,90"></div><div><label for="seller-info">INFORMAÇÕES ADICIONAIS</label><textarea id="seller-info" rows="3" placeholder="Fatos confirmados sobre o produto"></textarea></div><div><label for="seller-facts">FATOS ESTRUTURADOS (JSON)</label><textarea id="seller-facts" rows="2" placeholder='Ex.: {"material":"algodão"}' spellcheck="false"></textarea></div></div><p>Esses dados passam pelo Product Extractor. Preços divergentes ficam identificados.</p><button id="save-product" class="secondary-button" type="submit">SALVAR INFORMAÇÕES <span aria-hidden="true">→</span></button></form></details>
+        </article>
+
+        <aside class="comments-panel surface" aria-labelledby="comments-title"><div class="panel-topline"><span class="section-index">05 / COMUNIDADE</span><span id="comment-count" class="count-pill">0</span></div><div class="comments-heading"><h2 id="comments-title">Comentários</h2><p>Acompanhe a conversa conforme ela acontece.</p></div><div id="comments-list" class="comments-list" role="log" aria-live="polite" aria-relevant="additions"><div class="comments-empty"><span class="empty-icon" aria-hidden="true">☷</span><strong>Aguardando comentários</strong><p>As mensagens da LIVE aparecerão aqui.</p></div></div><div class="comments-footer"><span class="tiny-dot"></span><span id="comments-update">ATUALIZAÇÃO EM TEMPO REAL</span></div></aside>
+      </section>
+      <footer class="page-footer"><span>AGCN LIVE</span><span>Orientação em tempo real para sua transmissão.</span><span id="backend-status">Conectando ao servidor…</span></footer>
+    </main>
+  </div>
+</body>
+</html>
