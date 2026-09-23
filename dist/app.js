@@ -56,11 +56,7 @@
     elements.input.setAttribute('aria-label', isShopee ? 'Link da LIVE Shopee' : 'Usuário ou link TikTok');
     text('input-help', isShopee ? 'Link curto br.shp.ee ou URL da LIVE com sessão.' : 'Informe @username ou o link do perfil TikTok.');
     text('platform-current', label(platform()) + ' SELECIONADA');
-    $('sales-styles').querySelectorAll('button').forEach(button => button.disabled = !isShopee || !!state?.monitorando && state?.platform !== 'shopee');
-    $('product-details').classList.toggle('unavailable', !isShopee);
-    $('product-details').open = isShopee && $('product-details').open;
-    $('product-details').querySelector('summary').setAttribute('aria-disabled', String(!isShopee));
-    $('product-form').querySelectorAll('input, textarea, button').forEach(control => control.disabled = !isShopee);
+    text('product-link-help', `Inicie a LIVE e informe o link do produto ${isShopee ? 'Shopee' : 'TikTok Shop'}.`);
     paint(state);
   }
 
@@ -118,7 +114,7 @@
 
   function paintCoach(kind, s, now) {
     const sales = kind === 'sales';
-    const disabled = sales && platform() === 'tiktok';
+    const disabled = false;
     const data = sales ? s?.sales_coach : null;
     const message = !disabled && s?.monitorando ? currentMessage(sales ? data?.messages : s?.coach, now) : null;
     const stage = $(kind + '-stage');
@@ -129,10 +125,10 @@
     stage.classList.toggle('priority-high', !sales && !!message && (message.priority_level === 'high' || Number(message.priority) >= 85));
     body.classList.toggle('empty', !message);
     let emptyText;
-    if (disabled) emptyText = 'Sales Coach disponível exclusivamente para lives da Shopee.';
-    else if (!s?.monitorando) emptyText = sales ? 'Aguardando uma LIVE Shopee para acompanhar o produto.' : 'As orientações aparecerão aqui durante a LIVE.';
-    else if (sales && s?.product?.state === 'error') emptyText = 'Não foi possível identificar o produto. O Live Coach segue funcionando.';
-    else if (sales && !s?.product?.name) emptyText = 'Aguardando identificação do produto da Shopee.';
+    if (!s?.monitorando) emptyText = sales ? 'Inicie a LIVE e informe o link do produto.' : 'As orientações aparecerão aqui durante a LIVE.';
+    else if (sales && s?.product?.state === 'error') emptyText = `Não foi possível ler o produto: ${s.product.error || 'verifique o link'}.`;
+    else if (sales && s?.product?.state === 'loading') emptyText = 'Abrindo o produto na plataforma e lendo os dados disponíveis.';
+    else if (sales && !s?.product?.name) emptyText = 'Informe o link do produto que está vendendo.';
     else if (sales) emptyText = 'Preparando sugestões a partir dos dados do produto.';
     else emptyText = 'Aguardando sinais úteis da LIVE.';
     text(kind + '-message', message?.texto || emptyText);
@@ -142,18 +138,19 @@
     const progress = message ? Math.max(0, Math.min(100, (message.expires - now) / message.duration * 100)) : 0;
     $(kind + '-progress').style.width = `${progress}%`;
     if (sales) {
-      text('sales-product', disabled ? 'Indisponível no TikTok' : s?.product?.name || (s?.product?.state === 'error' ? 'Produto não identificado' : 'Aguardando produto'));
+      const price = s?.product?.price;
+      const priceLabel = typeof price === 'number' ? ` · ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price)}` : '';
+      text('sales-product', s?.product?.name ? `${s.product.name}${priceLabel}` : s?.product?.state === 'error' ? 'Produto não identificado' : s?.product?.state === 'loading' ? 'Lendo página do produto' : 'Aguardando link do produto');
       const conflict = Array.isArray(s?.product?.conflicts) ? s.product.conflicts.find(item => item.field === 'price') : null;
       const conflictLabel = $('product-conflict');
-      conflictLabel.classList.toggle('hidden', !conflict || disabled);
-      if (conflict && !disabled) {
+      conflictLabel.classList.toggle('hidden', !conflict);
+      if (conflict) {
         const value = fact => fact && typeof fact === 'object' ? fact.value ?? fact.amount ?? null : fact;
         const original = value(conflict.shopee);
         const seller = value(conflict.seller);
-        conflictLabel.textContent = `Preço divergente: Shopee ${original == null ? '(não informado)' : original} · Vendedor ${seller == null ? '(não informado)' : seller}. Os dois foram preservados; as orientações seguem o preço informado pelo vendedor.`;
+        conflictLabel.textContent = `Preço divergente: ${label(platform())} ${original == null ? '(não informado)' : original} · Vendedor ${seller == null ? '(não informado)' : seller}. Os dois foram preservados; as orientações seguem o preço informado pelo vendedor.`;
       }
-      text('sales-status', disabled ? 'Indisponível' : !s?.monitorando ? 'Aguardando' : data?.error ? 'Atenção' : message ? 'Orientando' : s?.product?.name ? 'Preparando' : 'Aguardando produto');
-      $('sales-panel')?.classList.toggle('unavailable', disabled);
+      text('sales-status', !s?.monitorando ? 'Aguardando' : s?.product?.state === 'error' ? 'Atenção' : message ? 'Orientando' : s?.product?.state === 'loading' ? 'Lendo produto' : s?.product?.name ? 'Preparando' : 'Aguardando link');
     } else {
       text('live-priority', message?.priority_level === 'high' || Number(message?.priority) >= 85 ? 'PRIORIDADE ALTA' : message ? 'ORIENTAÇÃO ATIVA' : '');
       $('live-priority').classList.toggle('high', !!message && (message.priority_level === 'high' || Number(message.priority) >= 85));
@@ -197,11 +194,10 @@
     paintCoach('live', s, now); paintCoach('sales', s, now);
     paintComments(s);
     $('alert-modes').querySelectorAll('button').forEach(button => button.classList.toggle('selected', button.dataset.mode === (s?.coach_mode?.value || 'all')));
-    const style = s?.monitorando && s?.platform === 'shopee' ? s.sales_coach?.style || selectedStyle : selectedStyle;
-    $('sales-styles').querySelectorAll('button').forEach(button => { button.classList.toggle('selected', button.dataset.style === style); button.disabled = platform() !== 'shopee'; });
-    $('product-details').querySelector('summary').style.pointerEvents = platform() === 'tiktok' ? 'none' : '';
+    const style = s?.monitorando ? s.sales_coach?.style || selectedStyle : selectedStyle;
+    $('sales-styles').querySelectorAll('button').forEach(button => { button.classList.toggle('selected', button.dataset.style === style); button.disabled = false; });
     if (s?.error && s?.platform === platform()) showNotice(s.error);
-    else if (s?.monitorando && s?.platform === 'shopee' && s.sales_coach?.error) showNotice(`Sales Coach: ${s.sales_coach.error}`);
+    else if (s?.monitorando && s?.product?.state === 'error') showNotice(`Produto: ${s.product.error}`);
     else if (connectedToServer && elements.notice.classList.contains('info')) clearNotice();
   }
 
@@ -226,15 +222,18 @@
       applyState(result.state);
       if (result.result?.ok === false) throw new Error(result.result.message || 'Operação não concluída.');
       clearNotice();
-    } catch (e) { showNotice(e.message); }
+      return result;
+    } catch (e) { showNotice(e.message); return null; }
     finally { requestPending = false; paint(state); }
   }
 
-  $('start-form').addEventListener('submit', event => {
+  $('start-form').addEventListener('submit', async event => {
     event.preventDefault();
     try {
       const seller = platform() === 'shopee' ? manualData() : { price: '', info: '', facts: {} };
-      command('/api/start', { platform: platform(), value: elements.input.value.trim(), ...seller, style: selectedStyle });
+      const started = await command('/api/start', { platform: platform(), value: elements.input.value.trim(), ...seller, style: selectedStyle });
+      const productUrl = $('product-link').value.trim();
+      if (started && productUrl) await command('/api/product-link', { url: productUrl });
     } catch (e) { showNotice(e.message); }
   });
   elements.stop.addEventListener('click', () => command('/api/stop', {}));
@@ -242,7 +241,7 @@
   $('alert-modes').addEventListener('click', event => { const mode = event.target.closest('button')?.dataset.mode; if (mode) command('/api/alert-mode', { mode }); });
   $('sales-styles').addEventListener('click', event => {
     const style = event.target.closest('button')?.dataset.style;
-    if (!style || platform() !== 'shopee') return;
+    if (!style) return;
     selectedStyle = style;
     if (state?.monitorando) command('/api/sales-style', { style });
     else { paint(state); clearNotice(); }
@@ -251,9 +250,14 @@
     event.preventDefault();
     try {
       const seller = manualData();
-      if (!state?.monitorando) { showNotice('Informações prontas. Inicie uma LIVE Shopee para enviá-las ao Product Extractor.', 'info'); return; }
+      if (!state?.monitorando) { showNotice('Informações prontas. Inicie a LIVE para enviá-las ao Product Extractor.', 'info'); return; }
       command('/api/product-info', seller);
     } catch (e) { showNotice(e.message); }
+  });
+  $('product-link-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if (!state?.monitorando) { showNotice('Inicie a LIVE para analisar o produto. O link informado será usado ao iniciar.', 'info'); return; }
+    command('/api/product-link', { url: $('product-link').value.trim() });
   });
   setInterval(() => {
     text('clock', new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
