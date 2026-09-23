@@ -115,15 +115,17 @@ class ProductPageWorker:
                 page = await context.new_page()
                 allowed = PRODUCT_HOSTS[platform]
 
-                async def guard(route, hosts=allowed, own_page=page):
-                    request = route.request
-                    host = (urlparse(request.url).hostname or "").lower()
-                    if request.is_navigation_request() and request.frame == own_page.main_frame and host not in hosts:
-                        await route.abort()
-                    else:
-                        await route.continue_()
+                def make_guard(allowed_hosts, own_page):
+                    async def guard(route):
+                        request = route.request
+                        host = (urlparse(request.url).hostname or "").lower()
+                        if request.is_navigation_request() and request.frame == own_page.main_frame and host not in allowed_hosts:
+                            await route.abort()
+                        else:
+                            await route.continue_()
+                    return guard
 
-                await page.route("**/*", guard)
+                await page.route("**/*", make_guard(allowed, page))
                 self.pages[platform] = page
                 try:
                     await page.goto(home, wait_until="domcontentloaded", timeout=12000)
