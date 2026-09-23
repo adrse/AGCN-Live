@@ -191,6 +191,8 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(facts, dict):
                 raise ValueError("Os fatos estruturados devem formar um objeto JSON.")
             return runtime.product_info(price=str(data.get("price") or "")[:100], info=str(data.get("info") or "")[:4000], facts=facts)
+        if path == "/api/product-link":
+            return runtime.product_link(data.get("url"))
         raise ValueError("Comando desconhecido.")
 
     def _error(self, exc):
