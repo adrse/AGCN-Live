@@ -1,0 +1,136 @@
+{
+  "notebook_sha256": "ab608fe4cbd17db0c44b9252f85eca76c814fbb0a498cb83bc1d0d775814f89b",
+  "cells": [
+    {
+      "cell": 0,
+      "name": "install_python",
+      "lines": 1,
+      "sha256": "471ebebfdbb4a230ffcbd37c7d5e8d6760dde552779e7ead94d66aea71427121"
+    },
+    {
+      "cell": 1,
+      "name": "install_chromium",
+      "lines": 1,
+      "sha256": "b20a3161ea5e5149a8edaec5daace32034a28c18ed8c68246175ccd0f7a07501"
+    },
+    {
+      "cell": 2,
+      "name": "shopee_worker",
+      "lines": 2021,
+      "sha256": "b78b79ecfba438e60ae3fa6ffd7feb7547ecb7fc6c9711dd937a029d23cf9cde",
+      "file": "02_shopee_worker.py"
+    },
+    {
+      "cell": 3,
+      "name": "tiktok_worker",
+      "lines": 1682,
+      "sha256": "15433352592955111cbdbdaf4b0fc87d8ba754c5b5e037e21668a81f9d1a4422",
+      "file": "03_tiktok_worker.py"
+    },
+    {
+      "cell": 4,
+      "name": "live_engine",
+      "lines": 2876,
+      "sha256": "85b7d60f3498baf596546a2c6ae88391b9228ab5e5aac59b939250d6d6726005",
+      "file": "04_live_engine.py"
+    },
+    {
+      "cell": 5,
+      "name": "coach_storage",
+      "lines": 2453,
+      "sha256": "1843ea774c0637d8d41f1c601fc5beb834935c825df0b468d91e9102400cf743",
+      "file": "05_coach_storage.py"
+    },
+    {
+      "cell": 6,
+      "name": "worker_comments",
+      "lines": 2858,
+      "sha256": "196b2cb54f61c13e8492da1081f5a48b467805907f4d48bc224bd925785a14ed",
+      "file": "06_worker_comments.py"
+    },
+    {
+      "cell": 7,
+      "name": "comment_dispatcher",
+      "lines": 2667,
+      "sha256": "2959419b94c15dad3dc03d394f923a802b2ede565ea99204f1193ebeaf85e433",
+      "file": "07_comment_dispatcher.py"
+    },
+    {
+      "cell": 8,
+      "name": "coach_product",
+      "lines": 4370,
+      "sha256": "6c18c7a6af05c22e131920675e79fc5f149734b8cf92b1fc96345a4c92fef731",
+      "file": "08_coach_product.py"
+    },
+    {
+      "cell": 9,
+      "name": "coach_commercial",
+      "lines": 2397,
+      "sha256": "8fb2b244e96545fdd32bf6b4ea743565d85dac98295edc2313b0af0446f29fa7",
+      "file": "09_coach_commercial.py"
+    },
+    {
+      "cell": 10,
+      "name": "coach_objections",
+      "lines": 2614,
+      "sha256": "710319829e6dfbba8c870ca6a4280aa97f367fb1fb30dce257ad8956bac1867e",
+      "file": "10_coach_objections.py"
+    },
+    {
+      "cell": 11,
+      "name": "worker_audience",
+      "lines": 3731,
+      "sha256": "a29c59469e0ec5fc040e03d536aa09e818a6da4eb4cbbf14fd021666ec312fe4",
+      "file": "11_worker_audience.py"
+    },
+    {
+      "cell": 12,
+      "name": "context_fusion",
+      "lines": 5402,
+      "sha256": "7544b4df038b0c8dd30e99e1f6d0deb1d9d6ec48659994cdface4dd59b9a8345",
+      "file": "12_context_fusion.py"
+    },
+    {
+      "cell": 13,
+      "name": "decision_coach",
+      "lines": 4881,
+      "sha256": "1ea210d2c3b41c4c2d6fdabb6367ea676e2503502e56fd6bccbce2f95fa74491",
+      "file": "13_decision_coach.py"
+    },
+    {
+      "cell": 14,
+      "name": "shopee_product",
+      "lines": 1233,
+      "sha256": "402f279a082e7435ed7045ae2243da70d96b9fae61972382325d487e4133a525",
+      "file": "14_shopee_product.py"
+    },
+    {
+      "cell": 15,
+      "name": "product_extractor",
+      "lines": 2898,
+      "sha256": "651db3512a6204f2217c0fd8e7e7cbacdf90338d2b4c5faa421a80930ba2fcd1",
+      "file": "15_product_extractor.py"
+    },
+    {
+      "cell": 16,
+      "name": "sales_builder",
+      "lines": 1722,
+      "sha256": "6808d43925d05fc7b44d07bb847c37dc14ba205d68f68a893ffaa45a7eb94d82",
+      "file": "16_sales_builder.py"
+    },
+    {
+      "cell": 17,
+      "name": "sales_decision",
+      "lines": 1201,
+      "sha256": "6fc5e2043b2f9606c63e5a22c43ae3333d50120f071cb573521f2d5ce54d7804",
+      "file": "17_sales_decision.py"
+    },
+    {
+      "cell": 18,
+      "name": "interface_v8",
+      "lines": 3196,
+      "sha256": "45fb7c04477945fc4ee594cee96465462ded1a8a4a484da6fbcd88704cc4bf70",
+      "file": "18_interface_v8.py"
+    }
+  ]
+}
