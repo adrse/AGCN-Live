@@ -1,0 +1,11 @@
+.git
+.openai
+.venv
+node_modules
+docs
+scripts
+frontend
+backend/tests
+__pycache__
+*.pyc
+*.tar.gz
