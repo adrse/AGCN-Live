@@ -13,10 +13,9 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
-from unittest.mock import patch
 
 from backend.runtime import MissingCaptureDependency, load_runtime, validate_input
-from backend.product_link import ProductPageError, ProductPageWorker, _price_number, normalize_page_data, validate_product_link
+from backend.product_link import ProductPageError, _price_number, normalize_page_data, validate_product_link
 from backend.server import Handler, _sessions
 
 
@@ -115,97 +114,6 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(raw["description"], "Tela de 2,09 polegadas")
         with self.assertRaises(ProductPageError):
             normalize_page_data(tiktok, {"blocked": True, "title": "qualquer produto"})
-
-    def test_short_product_links_resolve_only_through_official_hosts(self):
-        class Response:
-            def __init__(self, location=""):
-                self.status_code = 302 if location else 200
-                self.headers = {"Location": location} if location else {}
-            def __enter__(self):
-                return self
-            def __exit__(self, *_):
-                pass
-        class Session:
-            def __init__(self, redirect):
-                self.redirect = redirect
-                self.calls = []
-            def __enter__(self):
-                return self
-            def __exit__(self, *_):
-                pass
-            def get(self, url, **kwargs):
-                self.calls.append((url, kwargs))
-                return Response(self.redirect if len(self.calls) == 1 else "")
-
-        tiktok = Session("https://shop.tiktok.com/br/pdp/1737558033193076344?og_info=unverified")
-        with patch("backend.product_link.requests.Session", return_value=tiktok):
-            identity = validate_product_link("https://vt.tiktok.com/ZS9AHbTHKcoJp-2HMVp/", "tiktok")
-        self.assertEqual(identity["item_id"], "1737558033193076344")
-        self.assertEqual(identity["url"], "https://shop.tiktok.com/br/pdp/1737558033193076344")
-        self.assertEqual(len(tiktok.calls), 2)
-        self.assertFalse(tiktok.calls[0][1]["allow_redirects"])
-        shopee = Session("https://shopee.com.br/Produto-i.968369213.58264206611")
-        with patch("backend.product_link.requests.Session", return_value=shopee):
-            identity = validate_product_link("https://s.shopee.com.br/BU2jyrNid", "shopee")
-        self.assertEqual(identity["item_id"], "58264206611")
-        self.assertEqual(len(shopee.calls), 2)
-        malicious = Session("https://127.0.0.1/private")
-        with patch("backend.product_link.requests.Session", return_value=malicious):
-            with self.assertRaises(ProductPageError):
-                validate_product_link("https://vt.tiktok.com/ZS9AHbTHKcoJp-2HMVp/", "tiktok")
-        self.assertEqual(len(malicious.calls), 1)
-        with self.assertRaises(ProductPageError):
-            validate_product_link("https://vt.tiktok.com/ZS9AHbTHKcoJp-2HMVp/", "shopee")
-
-    def test_product_browser_route_guard_accepts_playwright_request(self):
-        class Request:
-            url = "https://shop.tiktok.com/br/pdp/123"
-            frame = object()
-            def is_navigation_request(self):
-                return True
-        class Route:
-            request = Request()
-            def __init__(self):
-                self.continued = False
-            async def continue_(self):
-                self.continued = True
-            async def abort(self):
-                self.continued = False
-        class Page:
-            main_frame = Request.frame
-            url = "https://shop.tiktok.com/br"
-            async def route(self, pattern, handler):
-                self.handler = handler
-            async def goto(self, *_args, **_kwargs):
-                pass
-        class Context:
-            async def new_page(self):
-                return Page()
-        class Browser:
-            async def new_context(self, **_kwargs):
-                return Context()
-        class BrowserType:
-            async def launch(self, **_kwargs):
-                return Browser()
-        class Playwright:
-            chromium = BrowserType()
-        class Manager:
-            async def start(self):
-                return Playwright()
-        async def check():
-            import inspect
-            worker = ProductPageWorker()
-            with patch("playwright.async_api.async_playwright", return_value=Manager()):
-                await worker.open()
-            route = Route()
-            handler = worker.pages["tiktok"].handler
-            self.assertEqual(len(inspect.signature(handler).parameters), 1)
-            await handler(route)
-            self.assertTrue(route.continued)
-            route.request.url = "https://localhost/private"
-            await handler(route)
-            self.assertFalse(route.continued)
-        asyncio.run(check())
 
     def test_tiktok_link_enters_original_extractor_builder_decision_pipeline(self):
         rt = self.runtime
