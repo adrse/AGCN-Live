@@ -5,10 +5,12 @@ Painel operacional web de uma única página. Os arquivos em `backend/original/`
 ## Fluxos preservados
 
 - Shopee Worker → Live Engine → Workers/Coaches → Context Fusion → Decision Coach → LIVE COACH.
-- Worker Shopee Produto → Product Extractor → Product Sales Builder → Sales Decision Coach → SALES COACH.
-- TikTok Worker → Live Engine → LIVE COACH. Nenhum processo do Sales Coach é iniciado no TikTok.
+- Link de produto Shopee ou TikTok Shop → navegador de produto da plataforma → Product Extractor → Product Sales Builder → Sales Decision Coach → SALES COACH.
+- TikTok Worker → Live Engine → LIVE COACH. O fluxo de vendas permanece separado do Context Fusion e só começa após o usuário informar um link de produto da mesma plataforma.
 
 O endpoint de estado consulta a Interface V8 e o histórico do Live Engine. Apenas a bridge original da V8 consome a fila final de Sales; a API e a SSE não consomem filas internas. Preço, informação adicional e fatos estruturados enviados pelo vendedor são encaminhados exclusivamente ao Product Extractor. Conflitos de preço preservam as duas origens. O frontend só exibe orientações recebidas do Decision Coach e do Sales Decision Coach e respeita `timestamp`, `display_seconds` e `expires_at`.
+
+`backend/product_link.py` mantém páginas de Shopee e TikTok Shop no Chromium do servidor por sessão, abre o link informado na aba correspondente e valida os dados visíveis antes de entregar um evento ao Product Extractor. Links curtos `vt.tiktok.com` e `s.shopee.com.br` são resolvidos com redirecionamentos limitados a HTTPS e aos domínios oficiais da mesma plataforma; o destino final precisa ter um identificador de produto válido. Parâmetros de rastreamento são removidos. O Worker de produto antigo continua preservado em `backend/original/14_shopee_product.py`, mas sua captura automática da LIVE não é iniciada nesta modalidade por link. Os produtores não têm outro consumidor das filas originais. O site não utiliza credenciais de TikTok: somente páginas de produto acessíveis sem login podem ser lidas. Desafios de tráfego, logins e campos ausentes são expostos como estado de erro ou vazio; não se adivinha preço nem ficha técnica.
 
 ## Rodar / publicar o serviço completo
 
@@ -25,4 +27,4 @@ Para teste sem Docker, instale os pacotes de `requirements.txt`, execute `python
 
 `backend/runtime.py` neutraliza importações e chamadas próprias do Colab, sem alterar os arquivos originais. Faz três correções isoladas: normalizadores de estilo/texto usavam chaves de dois caracteres em `str.maketrans` e lançavam `ValueError`; globais `_stop_requested` e `_output_seq` colidiam entre Builder e Sales Decision na namespace compartilhada; links completos `live.shopee.com.br` com `session` válido passam ao resolvedor sem o encurtador. Nenhuma lógica de geração de sugestões, classificação ou coleta de eventos foi reescrita.
 
-O Worker Shopee Produto não foi confirmado em LIVE real neste ambiente; quando não identifica um produto ou encontra erro HTTP, o painel informa o estado e não fabrica produto, preço ou orientação de vendas.
+O fluxo por link depende do acesso do Chromium às páginas públicas; a Shopee pode retornar uma verificação de tráfego, caso em que o painel informa o bloqueio e não gera orientação de venda sem fatos verificados. A extração do TikTok Shop também pode variar conforme a região e a página disponibilizada ao servidor.
