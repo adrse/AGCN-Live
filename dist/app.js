@@ -94,7 +94,7 @@
   }
 
   function paintMetrics(s) {
-    const metrics = s?.metrics || {};
+    const metrics = s?.monitorando && s?.platform === platform() ? s.metrics || {} : {};
     text('metric-viewers', fmt(metrics.viewers)); text('metric-likes', fmt(metrics.likes));
     text('metric-three-label', platform() === 'tiktok' ? 'PRESENTES' : 'COMPARTILHAMENTOS');
     text('metric-three', fmt(platform() === 'tiktok' ? metrics.gifts : metrics.shares));
@@ -200,7 +200,7 @@
     const style = s?.monitorando && s?.platform === 'shopee' ? s.sales_coach?.style || selectedStyle : selectedStyle;
     $('sales-styles').querySelectorAll('button').forEach(button => { button.classList.toggle('selected', button.dataset.style === style); button.disabled = platform() !== 'shopee'; });
     $('product-details').querySelector('summary').style.pointerEvents = platform() === 'tiktok' ? 'none' : '';
-    if (s?.error && s?.status === 'erro') showNotice(s.error);
+    if (s?.error && s?.platform === platform()) showNotice(s.error);
     else if (s?.monitorando && s?.platform === 'shopee' && s.sales_coach?.error) showNotice(`Sales Coach: ${s.sales_coach.error}`);
     else if (connectedToServer && elements.notice.classList.contains('info')) clearNotice();
   }
