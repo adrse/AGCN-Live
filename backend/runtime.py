@@ -1,13 +1,12 @@
-"""AGCN LIVE / ALIVE runtime adapter.
+"""AGCN LIVE runtime adapter - V2.1.
 
-Arquitetura ativa nesta versao:
+Arquitetura ativa:
 
-Original Colab:
 02 Shopee Worker
 03 TikTok Worker
-04 Live Engine
+04 Live Engine V2
 05 Coach Storage
-06 Worker Coach Comentarios
+06 Worker Coach Comentarios V1.5
 07 Comment Dispatcher V1.1
 08 Coach Produto
 09 Coach Comercial
@@ -15,14 +14,15 @@ Original Colab:
 11 Worker Audiencia
 12 Context Fusion
 13 Decision Coach
-18 Interface V8 (somente ponte operacional do monitoramento)
+18 Interface V8 (ponte operacional)
 
 Nova arquitetura web:
-Product Context V1
-Sales Coach V2
+- Product Context V1
+- Sales Coach V2
+- Live History V1
 
-Os modulos antigos de produto/vendas 14-17 permanecem no repositorio como
-historico, mas NAO sao executados por este runtime.
+Os modulos antigos de produto/vendas 14-17 continuam no repositorio
+como historico, mas NAO sao executados por este runtime.
 """
 
 from __future__ import annotations
@@ -34,14 +34,25 @@ import re
 import threading
 import time
 import unicodedata
+import uuid
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .product_context import ProductContext, ProductContextError
+from .live_history import (
+    LiveHistoryError,
+    get_live_history,
+)
+from .product_context import (
+    ProductContext,
+    ProductContextError,
+)
 from .sales_coach import SalesCoach
 
 
-ORIGINAL = Path(__file__).resolve().parent / "original"
+ORIGINAL = (
+    Path(__file__).resolve().parent
+    / "original"
+)
 
 ACTIVE_ORIGINAL_PREFIXES = {
     "02",
@@ -62,7 +73,9 @@ ACTIVE_ORIGINAL_PREFIXES = {
 MODULES = [
     path
     for path in sorted(
-        ORIGINAL.glob("[0-1][0-9]_*.py")
+        ORIGINAL.glob(
+            "[0-1][0-9]_*.py"
+        )
     )
     if path.name[:2]
     in ACTIVE_ORIGINAL_PREFIXES
@@ -76,6 +89,8 @@ SKIPPED_IMPORTS = {
     "IPython.display",
     "google.colab",
 }
+
+HISTORY_SYNC_SECONDS = 2.0
 
 
 class MissingCaptureDependency(
@@ -113,7 +128,8 @@ class _Unavailable:
 
 def _dependencies():
     namespace = {
-        "JSON": lambda data: data,
+        "JSON":
+            lambda data: data,
         "clear_output":
             lambda *args, **kwargs: None,
     }
@@ -143,7 +159,9 @@ def _dependencies():
         ],
     }
 
-    for module_name, names in imports.items():
+    for module_name, names in (
+        imports.items()
+    ):
         try:
             module = importlib.import_module(
                 module_name
@@ -202,15 +220,21 @@ def _norm(value):
     ).strip()
 
 
-def _normalize_sales_mode(value):
-    raw = _norm(
-        value
-    ).replace(
-        "/",
-        "_",
-    ).replace(
-        " ",
-        "_",
+def _normalize_sales_mode(
+    value,
+):
+    raw = (
+        _norm(
+            value
+        )
+        .replace(
+            "/",
+            "_",
+        )
+        .replace(
+            " ",
+            "_",
+        )
     )
 
     raw = re.sub(
@@ -220,16 +244,27 @@ def _normalize_sales_mode(value):
     )
 
     aliases = {
-        "leve": "leve",
-        "light": "leve",
-        "equilibrado": "leve",
-        "balanced": "leve",
-        "maximo": "maximo",
-        "maximum": "maximo",
-        "max": "maximo",
-        "pressao": "maximo",
-        "pressao_feira": "maximo",
-        "feira": "maximo",
+        "leve":
+            "leve",
+        "light":
+            "leve",
+        "equilibrado":
+            "leve",
+        "balanced":
+            "leve",
+
+        "maximo":
+            "maximo",
+        "maximum":
+            "maximo",
+        "max":
+            "maximo",
+        "pressao":
+            "maximo",
+        "pressao_feira":
+            "maximo",
+        "feira":
+            "maximo",
     }
 
     mode = aliases.get(
@@ -249,10 +284,18 @@ def _normalize_sales_mode(value):
     return mode
 
 
-def _direct_shopee(value):
-    parsed = urlparse(
-        value
-    )
+def _direct_shopee(
+    value,
+):
+    try:
+        parsed = urlparse(
+            str(
+                value
+                or ""
+            ).strip()
+        )
+    except Exception:
+        return None
 
     if (
         parsed.scheme != "https"
@@ -274,14 +317,22 @@ def _direct_shopee(value):
         not session
         or not re.fullmatch(
             r"[A-Za-z0-9_-]{3,100}",
-            session,
+            str(
+                session
+            ),
         )
     ):
         return None
 
     return {
-        "url": value,
-        "sessionId": session,
+        "url":
+            str(
+                value
+            ).strip(),
+        "sessionId":
+            str(
+                session
+            ),
     }
 
 
@@ -375,7 +426,9 @@ def validate_input(
 
 
 def _load_original_modules():
-    ns, missing = _dependencies()
+    ns, missing = (
+        _dependencies()
+    )
 
     ns.update({
         "__name__":
@@ -397,8 +450,8 @@ def _load_original_modules():
         nodes = []
 
         for node in tree.body:
-            # Interface V8: elimina registro de callbacks,
-            # HTML inline e display especificos do Colab.
+            # Interface V8:
+            # remove callbacks Colab, HTML inline e display.
             if (
                 path.name.startswith(
                     "18_"
@@ -426,7 +479,8 @@ def _load_original_modules():
                 and any(
                     alias.name
                     in SKIPPED_IMPORTS
-                    for alias in node.names
+                    for alias
+                    in node.names
                 )
             ):
                 continue
@@ -465,15 +519,17 @@ def _load_original_modules():
         exec(
             compile(
                 tree,
-                str(path),
+                str(
+                    path
+                ),
                 "exec",
             ),
             ns,
         )
 
-    # Mantemos a normalizacao segura usada na
-    # adaptacao web atual.
-    ns["_norm"] = _norm
+    ns[
+        "_norm"
+    ] = _norm
 
     return (
         ns,
@@ -491,14 +547,44 @@ def load_runtime():
         missing,
     )
 
-    # --------------------------------------------------------
-    # DETECCAO DE URL SHOPEE DIRETA
-    # --------------------------------------------------------
+    # ========================================================
+    # SHOPEE DIRECT URL COMPATIBILITY
+    # ========================================================
+
+    original_resolver = ns.get(
+        "resolver_link_mobile"
+    )
+
+    if callable(
+        original_resolver
+    ):
+        async def resolve_shopee(
+            browser,
+            url,
+        ):
+            direct = _direct_shopee(
+                url
+            )
+
+            if direct:
+                return direct
+
+            return await original_resolver(
+                browser,
+                url,
+            )
+
+        ns[
+            "resolver_link_mobile"
+        ] = resolve_shopee
+
     original_detect = ns[
         "agcn_detectar_entrada"
     ]
 
-    def detect(value):
+    def detect(
+        value,
+    ):
         direct = _direct_shopee(
             value
         )
@@ -519,31 +605,35 @@ def load_runtime():
         "agcn_detectar_entrada"
     ] = detect
 
-    # --------------------------------------------------------
-    # RUNNER WEB V2
-    #
-    # Substitui somente o orquestrador de execucao da
-    # Interface V8.
-    #
-    # O monitoramento/Live Coach continua executando os
-    # wrappers originais 02-13.
-    #
-    # O fluxo antigo 14-17 nao existe neste namespace.
-    # --------------------------------------------------------
+    # ========================================================
+    # WEB RUNNER
+    # ========================================================
+
     def runner(
         plataforma,
         valor,
         sales_config=None,
     ):
-        ns["agcn_monitorando"] = True
-        ns["agcn_status"] = (
-            "iniciando"
-        )
-        ns["agcn_erro"] = None
-        ns["agcn_sales_error"] = None
+        ns[
+            "agcn_monitorando"
+        ] = True
+
+        ns[
+            "agcn_status"
+        ] = "iniciando"
+
+        ns[
+            "agcn_erro"
+        ] = None
+
+        ns[
+            "agcn_sales_error"
+        ] = None
 
         painel_shopee_original = (
-            ns.get("painel")
+            ns.get(
+                "painel"
+            )
         )
 
         painel_tiktok_original = (
@@ -612,11 +702,11 @@ def load_runtime():
         )
 
         sales_task = None
+        final_status = "finished"
 
         async def sales_supervisor():
-            # O Dispatcher cria a fila sales no reset
-            # da LIVE. Esperamos essa fila existir antes
-            # de iniciar o consumidor.
+            # O Dispatcher cria a fila sales quando a LIVE
+            # e resetada. Esperamos a fila existir.
             for _ in range(
                 600
             ):
@@ -637,6 +727,7 @@ def load_runtime():
                 await asyncio.sleep(
                     0.05
                 )
+
             else:
                 runtime.sales_coach.last_error = (
                     "Canal sales do Comment Dispatcher "
@@ -665,9 +756,6 @@ def load_runtime():
                 "agcn_status"
             ] = "conectando"
 
-            # O Sales Coach pode permanecer OFF.
-            # Mesmo assim o consumidor fica pronto para
-            # quando o usuario ativar o Product Context.
             runtime.sales_coach.reset_live_state()
 
             sales_task = (
@@ -726,15 +814,22 @@ def load_runtime():
                 ns[
                     "agcn_status"
                 ] = "encerrado"
+
+                final_status = "stopped"
+
             else:
                 ns[
                     "agcn_status"
                 ] = "finalizado"
 
+                final_status = "finished"
+
         except asyncio.CancelledError:
             ns[
                 "agcn_status"
             ] = "encerrado"
+
+            final_status = "stopped"
 
         except BaseException as exc:
             ns[
@@ -747,6 +842,8 @@ def load_runtime():
             ns[
                 "agcn_status"
             ] = "erro"
+
+            final_status = "error"
 
         finally:
             try:
@@ -766,7 +863,7 @@ def load_runtime():
                 pass
 
             try:
-                pendentes = [
+                pending = [
                     item
                     for item in asyncio.all_tasks(
                         loop
@@ -774,13 +871,13 @@ def load_runtime():
                     if not item.done()
                 ]
 
-                for item in pendentes:
+                for item in pending:
                     item.cancel()
 
-                if pendentes:
+                if pending:
                     loop.run_until_complete(
                         asyncio.gather(
-                            *pendentes,
+                            *pending,
                             return_exceptions=True,
                         )
                     )
@@ -820,12 +917,21 @@ def load_runtime():
                 "agcn_monitorando"
             ] = False
 
+            # Historico e auxiliar. Falha de persistencia
+            # nunca deve derrubar o monitoramento.
+            try:
+                runtime._history_finish_current(
+                    final_status
+                )
+            except Exception as exc:
+                runtime.history_error = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+
     ns[
         "agcn_runner"
     ] = runner
 
-    # Campo legado usado pela Interface V8.
-    # Agora representa o estado real do Product Context.
     ns[
         "agcn_sales_enabled"
     ] = bool(
@@ -857,6 +963,529 @@ class NotebookRuntime:
             SalesCoach(
                 self.product_context
             )
+        )
+
+        # ====================================================
+        # LIVE HISTORY
+        # ====================================================
+
+        self.live_history = (
+            get_live_history()
+        )
+
+        # O server vai substituir este owner temporario
+        # pelo owner persistido no navegador na proxima etapa.
+        self.history_owner_key = (
+            "runtime_"
+            + uuid.uuid4().hex
+        )
+
+        self.history_record_id = None
+        self.history_error = None
+
+        self.live_started_at = None
+        self.live_ended_at = None
+
+        self._history_last_sync = 0.0
+        self._history_lock = (
+            threading.RLock()
+        )
+
+    # ========================================================
+    # OWNER / HISTORY
+    # ========================================================
+
+    def set_history_owner(
+        self,
+        owner_key,
+    ):
+        owner_key = str(
+            owner_key
+            or ""
+        ).strip()
+
+        if (
+            self.ns.get(
+                "agcn_monitorando",
+                False,
+            )
+            and owner_key
+            != self.history_owner_key
+        ):
+            raise ValueError(
+                "Nao e possivel trocar o historico "
+                "durante uma LIVE ativa."
+            )
+
+        try:
+            # A consulta valida o owner_key dentro
+            # do proprio Live History.
+            self.live_history.recent_lives(
+                owner_key=owner_key,
+                limit=1,
+            )
+        except LiveHistoryError as exc:
+            raise ValueError(
+                str(
+                    exc
+                )
+            ) from exc
+
+        self.history_owner_key = (
+            owner_key
+        )
+
+        return {
+            "ok": True,
+            "owner_key":
+                self.history_owner_key,
+        }
+
+    def history_summary(
+        self,
+        days=7,
+    ):
+        try:
+            return (
+                self.live_history.home_summary(
+                    owner_key=(
+                        self.history_owner_key
+                    ),
+                    days=days,
+                )
+            )
+        except LiveHistoryError as exc:
+            raise ValueError(
+                str(
+                    exc
+                )
+            ) from exc
+
+    def history_recent(
+        self,
+        limit=20,
+    ):
+        try:
+            return (
+                self.live_history.recent_lives(
+                    owner_key=(
+                        self.history_owner_key
+                    ),
+                    limit=limit,
+                    include_active=True,
+                )
+            )
+        except LiveHistoryError as exc:
+            raise ValueError(
+                str(
+                    exc
+                )
+            ) from exc
+
+    def _history_product_data(
+        self,
+    ):
+        snapshot = (
+            self.product_context.snapshot()
+        )
+
+        product = (
+            snapshot.get(
+                "product"
+            )
+            or {}
+        )
+
+        return {
+            "name":
+                product.get(
+                    "name"
+                ),
+            "enabled":
+                bool(
+                    snapshot.get(
+                        "enabled"
+                    )
+                ),
+            "mode":
+                snapshot.get(
+                    "mode",
+                    "leve",
+                ),
+        }
+
+    def _history_start(
+        self,
+        platform,
+    ):
+        with self._history_lock:
+            product = (
+                self._history_product_data()
+            )
+
+            self.live_started_at = (
+                time.time()
+            )
+
+            self.live_ended_at = None
+            self.history_error = None
+            self._history_last_sync = 0.0
+
+            try:
+                record = (
+                    self.live_history.start_live(
+                        owner_key=(
+                            self.history_owner_key
+                        ),
+                        platform=platform,
+                        runtime_session=(
+                            str(
+                                self.generation
+                                + 1
+                            )
+                        ),
+                        product_name=(
+                            product[
+                                "name"
+                            ]
+                        ),
+                        sales_coach_enabled=(
+                            product[
+                                "enabled"
+                            ]
+                        ),
+                        sales_mode=(
+                            product[
+                                "mode"
+                            ]
+                        ),
+                        started_at=(
+                            self.live_started_at
+                        ),
+                    )
+                )
+
+                self.history_record_id = (
+                    record[
+                        "id"
+                    ]
+                )
+
+            except Exception as exc:
+                self.history_record_id = None
+
+                self.history_error = (
+                    f"{type(exc).__name__}: "
+                    f"{exc}"
+                )
+
+    def _history_source(
+        self,
+        platform,
+    ):
+        if platform == "shopee":
+            return self.ns.get(
+                "estado",
+                {},
+            )
+
+        return self.ns.get(
+            "estado_tiktok",
+            {},
+        )
+
+    def _history_comment_count(
+        self,
+    ):
+        value = self.ns.get(
+            "worker_coach_comments_comments_received"
+        )
+
+        try:
+            return max(
+                0,
+                int(
+                    value
+                ),
+            )
+        except Exception:
+            return 0
+
+    def _history_sync(
+        self,
+        state,
+        source,
+        *,
+        force=False,
+    ):
+        with self._history_lock:
+            if not self.history_record_id:
+                return
+
+            now = time.time()
+
+            if (
+                not force
+                and now
+                - self._history_last_sync
+                < HISTORY_SYNC_SECONDS
+            ):
+                return
+
+            metrics = (
+                state.get(
+                    "metrics"
+                )
+                or {}
+            )
+
+            product = (
+                self._history_product_data()
+            )
+
+            total_users = None
+            total_users_semantics = None
+
+            if (
+                state.get(
+                    "platform"
+                )
+                == "tiktok"
+            ):
+                total_users = (
+                    source.get(
+                        "totalUser"
+                    )
+                )
+
+                if total_users is not None:
+                    total_users_semantics = (
+                        "platform_total_user"
+                    )
+
+            try:
+                self.live_history.update_live(
+                    owner_key=(
+                        self.history_owner_key
+                    ),
+                    live_record_id=(
+                        self.history_record_id
+                    ),
+                    metrics=metrics,
+                    comments_count=(
+                        self._history_comment_count()
+                    ),
+                    subject=(
+                        state.get(
+                            "subject"
+                        )
+                    ),
+                    live_id=(
+                        state.get(
+                            "live_id"
+                        )
+                    ),
+                    product_name=(
+                        product[
+                            "name"
+                        ]
+                    ),
+                    sales_coach_enabled=(
+                        product[
+                            "enabled"
+                        ]
+                    ),
+                    sales_mode=(
+                        product[
+                            "mode"
+                        ]
+                    ),
+                    total_users=(
+                        total_users
+                    ),
+                    total_users_semantics=(
+                        total_users_semantics
+                    ),
+                    observed_at=now,
+                    extra={
+                        "connected":
+                            bool(
+                                state.get(
+                                    "connected"
+                                )
+                            ),
+                    },
+                )
+
+                self._history_last_sync = (
+                    now
+                )
+
+                self.history_error = None
+
+            except Exception as exc:
+                self.history_error = (
+                    f"{type(exc).__name__}: "
+                    f"{exc}"
+                )
+
+    def _history_finish(
+        self,
+        state,
+        source,
+        final_status,
+    ):
+        with self._history_lock:
+            if not self.history_record_id:
+                return
+
+            self._history_sync(
+                state,
+                source,
+                force=True,
+            )
+
+            product = (
+                self._history_product_data()
+            )
+
+            metrics = (
+                state.get(
+                    "metrics"
+                )
+                or {}
+            )
+
+            total_users = None
+            total_users_semantics = None
+
+            if (
+                state.get(
+                    "platform"
+                )
+                == "tiktok"
+            ):
+                total_users = (
+                    source.get(
+                        "totalUser"
+                    )
+                )
+
+                if total_users is not None:
+                    total_users_semantics = (
+                        "platform_total_user"
+                    )
+
+            record_id = (
+                self.history_record_id
+            )
+
+            ended_at = time.time()
+
+            try:
+                self.live_history.finish_live(
+                    owner_key=(
+                        self.history_owner_key
+                    ),
+                    live_record_id=(
+                        record_id
+                    ),
+                    status=(
+                        final_status
+                    ),
+                    ended_at=(
+                        ended_at
+                    ),
+                    metrics=metrics,
+                    comments_count=(
+                        self._history_comment_count()
+                    ),
+                    subject=(
+                        state.get(
+                            "subject"
+                        )
+                    ),
+                    live_id=(
+                        state.get(
+                            "live_id"
+                        )
+                    ),
+                    product_name=(
+                        product[
+                            "name"
+                        ]
+                    ),
+                    sales_coach_enabled=(
+                        product[
+                            "enabled"
+                        ]
+                    ),
+                    sales_mode=(
+                        product[
+                            "mode"
+                        ]
+                    ),
+                    total_users=(
+                        total_users
+                    ),
+                    total_users_semantics=(
+                        total_users_semantics
+                    ),
+                )
+
+                self.live_ended_at = (
+                    ended_at
+                )
+
+                self.history_record_id = (
+                    None
+                )
+
+                self.history_error = None
+
+            except Exception as exc:
+                self.history_error = (
+                    f"{type(exc).__name__}: "
+                    f"{exc}"
+                )
+
+    def _history_finish_current(
+        self,
+        final_status,
+    ):
+        if not self.history_record_id:
+            return
+
+        try:
+            state = (
+                self.ns[
+                    "agcn_callback_status"
+                ]()
+            )
+        except Exception:
+            state = {}
+
+        platform = (
+            state.get(
+                "platform"
+            )
+            or self.platform
+        )
+
+        source = (
+            self._history_source(
+                platform
+            )
+        )
+
+        state[
+            "platform"
+        ] = platform
+
+        self._history_finish(
+            state,
+            source,
+            final_status,
         )
 
     # ========================================================
@@ -912,10 +1541,7 @@ class NotebookRuntime:
                 )
             )
 
-        # Compatibilidade temporaria com o endpoint antigo:
-        # se a versao atual do frontend mandar preco/info,
-        # guardamos somente o que e factual, mas NAO ativamos
-        # o Sales Coach e NAO inventamos nome de produto.
+        # Compatibilidade temporaria com a interface antiga.
         if price or info:
             self.product_context.update(
                 current_price=(
@@ -933,6 +1559,10 @@ class NotebookRuntime:
 
         self.sales_coach.reset_live_state()
 
+        self._history_start(
+            platform
+        )
+
         result = self.ns[
             "agcn_callback_start"
         ](
@@ -945,6 +1575,14 @@ class NotebookRuntime:
         if not result[
             "ok"
         ]:
+            if self.history_record_id:
+                try:
+                    self._history_finish_current(
+                        "error"
+                    )
+                except Exception:
+                    pass
+
             raise ValueError(
                 result[
                     "message"
@@ -966,8 +1604,6 @@ class NotebookRuntime:
             )
         )
 
-        # Corrige metadados legados devolvidos pela
-        # Interface V8.
         result[
             "sales_enabled"
         ] = bool(
@@ -983,9 +1619,15 @@ class NotebookRuntime:
             "leve",
         )
 
+        result[
+            "started_at"
+        ] = self.live_started_at
+
         return result
 
-    def stop(self):
+    def stop(
+        self,
+    ):
         if not self.ns[
             "agcn_monitorando"
         ]:
@@ -995,12 +1637,16 @@ class NotebookRuntime:
                     "Monitoramento ja encerrado.",
             }
 
+        # Registra uma ultima amostra antes de cancelar.
+        try:
+            self.status()
+        except Exception:
+            pass
+
         result = self.ns[
             "agcn_callback_stop"
         ]()
 
-        # Uma solicitacao pode chegar antes que a
-        # thread publique loop/task.
         for _ in range(
             30
         ):
@@ -1052,7 +1698,7 @@ class NotebookRuntime:
         )
 
     # ========================================================
-    # PRODUCT CONTEXT V1
+    # PRODUCT CONTEXT
     # ========================================================
 
     def product_context_state(
@@ -1085,14 +1731,18 @@ class NotebookRuntime:
             )
         except ProductContextError as exc:
             raise ValueError(
-                str(exc)
+                str(
+                    exc
+                )
             ) from exc
 
         self._sync_sales_enabled()
 
         return {
-            "ok": True,
-            "product_context": result,
+            "ok":
+                True,
+            "product_context":
+                result,
         }
 
     def product_context_activate(
@@ -1107,14 +1757,18 @@ class NotebookRuntime:
             )
         except ProductContextError as exc:
             raise ValueError(
-                str(exc)
+                str(
+                    exc
+                )
             ) from exc
 
         self._sync_sales_enabled()
 
         return {
-            "ok": True,
-            "product_context": result,
+            "ok":
+                True,
+            "product_context":
+                result,
         }
 
     def product_context_deactivate(
@@ -1127,8 +1781,10 @@ class NotebookRuntime:
         self._sync_sales_enabled()
 
         return {
-            "ok": True,
-            "product_context": result,
+            "ok":
+                True,
+            "product_context":
+                result,
         }
 
     def product_context_clear(
@@ -1145,8 +1801,10 @@ class NotebookRuntime:
         self._sync_sales_enabled()
 
         return {
-            "ok": True,
-            "product_context": result,
+            "ok":
+                True,
+            "product_context":
+                result,
         }
 
     def sales_mode(
@@ -1165,11 +1823,14 @@ class NotebookRuntime:
             )
         except ProductContextError as exc:
             raise ValueError(
-                str(exc)
+                str(
+                    exc
+                )
             ) from exc
 
         return {
-            "ok": True,
+            "ok":
+                True,
             "mode":
                 result[
                     "mode"
@@ -1194,11 +1855,7 @@ class NotebookRuntime:
         return enabled
 
     # ========================================================
-    # COMPATIBILIDADE TEMPORARIA COM SERVER/FRONTEND V8
-    #
-    # Estes metodos existem apenas para a branch continuar
-    # coerente enquanto server.py e a Interface V9 ainda nao
-    # foram substituidos.
+    # LEGACY COMPATIBILITY
     # ========================================================
 
     def sales_style(
@@ -1227,12 +1884,10 @@ class NotebookRuntime:
                 "additional_info"
             ] = info
 
-        # O antigo campo JSON "facts" nao faz parte do
-        # Product Context V1. Nao convertemos silenciosamente
-        # estruturas arbitrarias em fatos de produto.
         if not data:
             return {
-                "ok": True,
+                "ok":
+                    True,
                 "product_context":
                     self.product_context.snapshot(),
                 "deprecated":
@@ -1262,7 +1917,7 @@ class NotebookRuntime:
         )
 
     # ========================================================
-    # STATUS
+    # STATE
     # ========================================================
 
     def status(
@@ -1282,14 +1937,8 @@ class NotebookRuntime:
         )
 
         source = (
-            ns.get(
-                "estado",
-                {},
-            )
-            if platform == "shopee"
-            else ns.get(
-                "estado_tiktok",
-                {},
+            self._history_source(
+                platform
             )
         )
 
@@ -1302,6 +1951,7 @@ class NotebookRuntime:
                     "sessionId"
                 )
             )
+
         else:
             connected = bool(
                 source.get(
@@ -1312,7 +1962,6 @@ class NotebookRuntime:
                 )
             )
 
-        # Historico e snapshot: nao consomem filas.
         history = ns[
             "live_engine_recent_events"
         ](
@@ -1335,18 +1984,20 @@ class NotebookRuntime:
             )
 
             comments.append({
-                "id": str(
-                    event.get(
-                        "event_id"
-                    )
-                    or event.get(
-                        "id"
-                    )
-                    or (
-                        f"{event.get('iso_time')}:"
-                        f"{len(comments)}"
-                    )
-                ),
+                "id":
+                    str(
+                        event.get(
+                            "event_id"
+                        )
+                        or event.get(
+                            "id"
+                        )
+                        or (
+                            f"{event.get('iso_time')}:"
+                            f"{len(comments)}"
+                        )
+                    ),
+
                 "user":
                     ns[
                         "agcn_repair_text"
@@ -1356,6 +2007,7 @@ class NotebookRuntime:
                         )
                         or "Usuario"
                     ),
+
                 "text":
                     ns[
                         "agcn_repair_text"
@@ -1365,6 +2017,7 @@ class NotebookRuntime:
                         )
                         or ""
                     ),
+
                 "time":
                     payload.get(
                         "display_time"
@@ -1389,8 +2042,10 @@ class NotebookRuntime:
             and platform
             == "tiktok"
         ):
-            error = source.get(
-                "erro"
+            error = (
+                source.get(
+                    "erro"
+                )
             )
 
         product_context = (
@@ -1453,18 +2108,20 @@ class NotebookRuntime:
             )
 
             try:
-                hora = time.strftime(
-                    "%H:%M:%S",
-                    time.localtime(
-                        float(
-                            timestamp
-                        )
-                    ),
+                hora = (
+                    time.strftime(
+                        "%H:%M:%S",
+                        time.localtime(
+                            float(
+                                timestamp
+                            )
+                        ),
+                    )
                 )
             except Exception:
                 hora = ""
 
-            item = copy_dict = dict(
+            item = dict(
                 message
             )
 
@@ -1477,7 +2134,7 @@ class NotebookRuntime:
             ] = expires_at
 
             sales_messages.append(
-                copy_dict
+                item
             )
 
         enabled = bool(
@@ -1486,7 +2143,7 @@ class NotebookRuntime:
             )
         )
 
-        self.ns[
+        ns[
             "agcn_sales_enabled"
         ] = enabled
 
@@ -1495,7 +2152,9 @@ class NotebookRuntime:
                 connected,
 
             "error":
-                str(error)
+                str(
+                    error
+                )
                 if error
                 else None,
 
@@ -1511,58 +2170,70 @@ class NotebookRuntime:
             "product_context":
                 product_context,
 
-            # Campo simplificado para compatibilidade visual
-            # durante a migracao para Interface V9.
             "product": {
-                "state": (
-                    "active"
-                    if enabled
-                    else "configured"
-                    if product_context.get(
-                        "ready"
-                    )
-                    else "empty"
-                ),
+                "state":
+                    (
+                        "active"
+                        if enabled
+                        else (
+                            "configured"
+                            if product_context.get(
+                                "ready"
+                            )
+                            else "empty"
+                        )
+                    ),
+
                 "name":
                     product.get(
                         "name"
                     ),
-                "price": (
-                    product.get(
-                        "current_price"
-                    )
-                    if product.get(
-                        "current_price"
-                    )
-                    is not None
-                    else product.get(
-                        "regular_price"
-                    )
-                ),
+
+                "price":
+                    (
+                        product.get(
+                            "current_price"
+                        )
+                        if product.get(
+                            "current_price"
+                        )
+                        is not None
+                        else product.get(
+                            "regular_price"
+                        )
+                    ),
+
                 "regular_price":
                     product.get(
                         "regular_price"
                     ),
+
                 "current_price":
                     product.get(
                         "current_price"
                     ),
+
                 "discount_percent":
                     product.get(
                         "discount_percent"
                     ),
+
                 "description":
                     product.get(
                         "description"
                     ),
+
                 "additional_info":
                     product.get(
                         "additional_info"
                     ),
+
                 "error":
                     None,
+
                 "url":
                     None,
+
                 "conflicts":
                     [],
             },
@@ -1572,6 +2243,7 @@ class NotebookRuntime:
                     sales.get(
                         "version"
                     ),
+
                 "enabled":
                     bool(
                         enabled
@@ -1579,14 +2251,17 @@ class NotebookRuntime:
                             "monitorando"
                         )
                     ),
+
                 "configured":
                     bool(
                         product_context.get(
                             "ready"
                         )
                     ),
+
                 "active":
                     enabled,
+
                 "available_for_platform":
                     platform
                     in {
@@ -1594,47 +2269,140 @@ class NotebookRuntime:
                         "shopee",
                         "tiktok",
                     },
+
                 "mode":
                     product_context.get(
                         "mode",
                         "leve",
                     ),
-                # Alias temporario ate a Interface V9
-                # deixar de usar "style".
+
                 "style":
                     product_context.get(
                         "mode",
                         "leve",
                     ),
+
                 "running":
                     sales.get(
                         "running",
                         False,
                     ),
+
                 "messages":
                     sales_messages,
+
                 "recent_comment_count":
                     sales.get(
                         "recent_comment_count",
                         0,
                     ),
+
                 "last_output_at":
                     sales.get(
                         "last_output_at"
                     ),
+
                 "last_reactive_at":
                     sales.get(
                         "last_reactive_at"
                     ),
+
                 "last_proactive_at":
                     sales.get(
                         "last_proactive_at"
                     ),
+
                 "error":
                     sales.get(
                         "last_error"
                     ),
             },
         })
+
+        # ====================================================
+        # LIVE SESSION / TIMER
+        # ====================================================
+
+        elapsed = None
+
+        if self.live_started_at is not None:
+            endpoint = (
+                now
+                if state.get(
+                    "monitorando"
+                )
+                else (
+                    self.live_ended_at
+                    or now
+                )
+            )
+
+            elapsed = max(
+                0.0,
+                endpoint
+                - self.live_started_at,
+            )
+
+        state[
+            "live_session"
+        ] = {
+            "started_at":
+                self.live_started_at,
+
+            "ended_at":
+                self.live_ended_at,
+
+            "elapsed_seconds":
+                elapsed,
+
+            "history_record_id":
+                self.history_record_id,
+
+            "history_error":
+                self.history_error,
+        }
+
+        # ====================================================
+        # HISTORY SYNC
+        # ====================================================
+
+        if (
+            self.history_record_id
+            and state.get(
+                "monitorando"
+            )
+        ):
+            self._history_sync(
+                state,
+                source,
+                force=False,
+            )
+
+        elif (
+            self.history_record_id
+            and not state.get(
+                "monitorando"
+            )
+        ):
+            final_status = (
+                "error"
+                if state.get(
+                    "error"
+                )
+                else (
+                    "stopped"
+                    if ns.get(
+                        "agcn_stop_requested",
+                        False,
+                    )
+                    else "finished"
+                )
+            )
+
+            self._history_finish(
+                state,
+                source,
+                final_status,
+            )
 
         return state
