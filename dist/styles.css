@@ -4598,90 +4598,144 @@ html[data-theme="dark"]
 }
 
 /* ==========================================================
-   28. INTERFACE V9.5B - BOTTOM NAV VISUAL MATCH
-   Ajuste forte para deixar os botoes visualmente como a referencia:
-   icone pequeno, texto pequeno, item ativo azul e linha curta inferior.
+   28. INTERFACE V9.5C - BOTTOM NAV VECTOR MATCH
+   Icones vetoriais recriados para reproduzir a referencia:
+   casa solida, engrenagem solida, barras arredondadas e sliders.
    ========================================================== */
 
 @media (max-width: 1079px) {
   .bottom-nav-item {
-    gap: 3px !important;
-    color: #7d8494 !important;
-    background: transparent !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    font-weight: 500 !important;
-    transform: none;
-  }
+    gap: 3px;
 
-  .bottom-nav-item > span:not(.bottom-nav-icon):not(.bottom-nav-indicator) {
-    display: block !important;
-    color: inherit !important;
-    font-size: 10px !important;
-    font-weight: inherit !important;
-    line-height: 1.08 !important;
-    letter-spacing: -0.01em !important;
+    color: #70778d;
+    background: transparent;
+
+    border-radius: 0;
+
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1;
+
+    box-shadow: none;
   }
 
   .bottom-nav-item:hover,
-  .bottom-nav-item:focus-visible,
-  .bottom-nav-item:active {
-    background: transparent !important;
-    box-shadow: none !important;
+  .bottom-nav-item:focus-visible {
+    background: transparent;
+    box-shadow: none;
   }
 
   .bottom-nav-item:active {
-    transform: scale(.98) !important;
+    background: transparent;
+    transform: scale(.98);
   }
 
   .bottom-nav-icon {
-    width: 22px !important;
-    height: 22px !important;
-    color: inherit !important;
+    width: 22px;
+    height: 22px;
+
+    flex: 0 0 auto;
+
+    color: inherit;
   }
 
   .bottom-nav-icon svg {
-    width: 100% !important;
-    height: 100% !important;
-    display: block !important;
+    width: 100%;
+    height: 100%;
+  }
+
+  .bottom-nav-label {
+    display: block;
+
+    color: inherit;
+
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1.05;
+    letter-spacing: -.015em;
   }
 
   .bottom-nav-item.is-active,
   .bottom-nav-item[aria-current="page"] {
-    color: #0061ff !important;
-    font-weight: 600 !important;
+    color: #0068fb;
+
+    font-weight: 500;
   }
 
-  .bottom-nav-item.is-active > span:not(.bottom-nav-icon):not(.bottom-nav-indicator),
-  .bottom-nav-item[aria-current="page"] > span:not(.bottom-nav-icon):not(.bottom-nav-indicator) {
-    color: #0061ff !important;
+  .bottom-nav-item.is-active
+  .bottom-nav-label,
+  .bottom-nav-item[aria-current="page"]
+  .bottom-nav-label {
+    color: #0068fb;
+
+    font-weight: 500;
   }
 
   .bottom-nav-indicator {
-    left: 50% !important;
-    bottom: 3px !important;
-    width: 24px !important;
-    height: 3px !important;
-    background: transparent !important;
-    border-radius: 999px !important;
-    transform: translateX(-50%) !important;
+    left: 50%;
+    bottom: 3px;
+
+    width: 24px;
+    height: 3px;
+
+    background: transparent;
+    border-radius: 999px;
+
+    transform: translateX(-50%);
   }
 
-  .bottom-nav-item.is-active .bottom-nav-indicator,
-  .bottom-nav-item[aria-current="page"] .bottom-nav-indicator {
-    width: 30px !important;
-    background: #0061ff !important;
+  .bottom-nav-item.is-active
+  .bottom-nav-indicator,
+  .bottom-nav-item[aria-current="page"]
+  .bottom-nav-indicator {
+    width: 30px;
+
+    background: #0068fb;
+  }
+
+  html[data-theme="dark"]
+  .bottom-nav-item {
+    color: #8d95a9;
+  }
+
+  html[data-theme="dark"]
+  .bottom-nav-item.is-active,
+  html[data-theme="dark"]
+  .bottom-nav-item[aria-current="page"],
+  html[data-theme="dark"]
+  .bottom-nav-item.is-active
+  .bottom-nav-label,
+  html[data-theme="dark"]
+  .bottom-nav-item[aria-current="page"]
+  .bottom-nav-label {
+    color: #4b91ff;
+  }
+
+  html[data-theme="dark"]
+  .bottom-nav-item.is-active
+  .bottom-nav-indicator,
+  html[data-theme="dark"]
+  .bottom-nav-item[aria-current="page"]
+  .bottom-nav-indicator {
+    background: #4b91ff;
   }
 }
 
 @media (max-width: 390px) {
-  .bottom-nav-item > span:not(.bottom-nav-icon):not(.bottom-nav-indicator) {
-    font-size: 9px !important;
+  .bottom-nav-icon {
+    width: 21px;
+    height: 21px;
   }
 
-  .bottom-nav-icon {
-    width: 21px !important;
-    height: 21px !important;
+  .bottom-nav-label {
+    font-size: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav-item,
+  .bottom-nav-indicator {
+    transition: none !important;
   }
 }
 

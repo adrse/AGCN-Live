@@ -1823,6 +1823,7 @@
     <!-- =====================================================
          MOBILE BOTTOM NAV
          ===================================================== -->
+
     <nav
       id="bottom-nav"
       class="bottom-nav"
@@ -1835,18 +1836,18 @@
         aria-current="page"
       >
         <span
-          class="bottom-nav-icon"
+          class="bottom-nav-icon bottom-nav-icon-home"
           aria-hidden="true"
         >
           <svg viewBox="0 0 24 24">
             <path
-              d="M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3v-9.5Z"
+              d="M3.25 10.55 12 3.25l8.75 7.3v9.1a1.1 1.1 0 0 1-1.1 1.1h-5.1v-6.1h-5.1v6.1h-5.1a1.1 1.1 0 0 1-1.1-1.1v-9.1Z"
               fill="currentColor"
             />
           </svg>
         </span>
 
-        <span>
+        <span class="bottom-nav-label">
           In&iacute;cio
         </span>
 
@@ -1862,25 +1863,38 @@
         data-route="configure"
       >
         <span
-          class="bottom-nav-icon"
+          class="bottom-nav-icon bottom-nav-icon-configure"
           aria-hidden="true"
         >
           <svg viewBox="0 0 24 24">
-            <path
-              d="M12 8.5A3.5 3.5 0 1 0 12 15.5 3.5 3.5 0 0 0 12 8.5Z"
+            <defs>
+              <mask id="agcn-nav-gear-mask">
+                <rect width="24" height="24" fill="black"/>
+                <g fill="white">
+                  <circle cx="12" cy="12" r="7.1"/>
+                  <rect x="10.1" y="1.5" width="3.8" height="5.3" rx="1.2"/>
+                  <rect x="10.1" y="17.2" width="3.8" height="5.3" rx="1.2"/>
+                  <rect x="17.2" y="10.1" width="5.3" height="3.8" rx="1.2"/>
+                  <rect x="1.5" y="10.1" width="5.3" height="3.8" rx="1.2"/>
+                  <rect x="10.1" y="1.5" width="3.8" height="5.3" rx="1.2" transform="rotate(45 12 12)"/>
+                  <rect x="10.1" y="17.2" width="3.8" height="5.3" rx="1.2" transform="rotate(45 12 12)"/>
+                  <rect x="17.2" y="10.1" width="5.3" height="3.8" rx="1.2" transform="rotate(45 12 12)"/>
+                  <rect x="1.5" y="10.1" width="5.3" height="3.8" rx="1.2" transform="rotate(45 12 12)"/>
+                </g>
+                <circle cx="12" cy="12" r="3.2" fill="black"/>
+              </mask>
+            </defs>
+
+            <rect
+              width="24"
+              height="24"
               fill="currentColor"
-            />
-            <path
-              d="m19.4 13.5 2-1.5-2-1.5.2-2.4-2.5-.4-1.1-2.2-2.2 1.1L12 5l-1.8 1.6L8 5.5 6.9 7.7l-2.5.4.2 2.4-2 1.5 2 1.5-.2 2.4 2.5.4L8 18.5l2.2-1.1L12 19l1.8-1.6 2.2 1.1 1.1-2.2 2.5-.4-.2-2.4Z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.1"
-              stroke-linejoin="round"
+              mask="url(#agcn-nav-gear-mask)"
             />
           </svg>
         </span>
 
-        <span>
+        <span class="bottom-nav-label">
           Configurar
         </span>
 
@@ -1896,38 +1910,38 @@
         data-route="monitor"
       >
         <span
-          class="bottom-nav-icon"
+          class="bottom-nav-icon bottom-nav-icon-monitor"
           aria-hidden="true"
         >
           <svg viewBox="0 0 24 24">
             <rect
-              x="4"
-              y="13"
-              width="3"
-              height="7"
-              rx="1.5"
+              x="3.2"
+              y="10.2"
+              width="4.2"
+              height="10.3"
+              rx="2.1"
               fill="currentColor"
             />
             <rect
-              x="10.5"
-              y="8"
-              width="3"
-              height="12"
-              rx="1.5"
+              x="9.9"
+              y="3"
+              width="4.2"
+              height="17.5"
+              rx="2.1"
               fill="currentColor"
             />
             <rect
-              x="17"
-              y="4"
-              width="3"
-              height="16"
-              rx="1.5"
+              x="16.6"
+              y="7"
+              width="4.2"
+              height="13.5"
+              rx="2.1"
               fill="currentColor"
             />
           </svg>
         </span>
 
-        <span>
+        <span class="bottom-nav-label">
           Monitorar
         </span>
 
@@ -1943,39 +1957,48 @@
         data-route="settings"
       >
         <span
-          class="bottom-nav-icon"
+          class="bottom-nav-icon bottom-nav-icon-settings"
           aria-hidden="true"
         >
           <svg viewBox="0 0 24 24">
-            <path
-              d="M4 6h10M18 6h2M4 12h3M11 12h9M4 18h7M15 18h5"
+            <g
               fill="none"
               stroke="currentColor"
-              stroke-width="1.8"
+              stroke-width="2"
               stroke-linecap="round"
-            />
-            <circle
-              cx="16"
-              cy="6"
-              r="2"
-              fill="currentColor"
-            />
-            <circle
-              cx="9"
-              cy="12"
-              r="2"
-              fill="currentColor"
-            />
-            <circle
-              cx="13"
-              cy="18"
-              r="2"
-              fill="currentColor"
-            />
+              stroke-linejoin="round"
+            >
+              <path d="M3.5 5.4h5.1"/>
+              <path d="M13.2 5.4h7.3"/>
+              <circle
+                cx="10.9"
+                cy="5.4"
+                r="2.25"
+                fill="var(--surface)"
+              />
+
+              <path d="M3.5 12h9.2"/>
+              <path d="M17.3 12h3.2"/>
+              <circle
+                cx="15"
+                cy="12"
+                r="2.25"
+                fill="var(--surface)"
+              />
+
+              <path d="M3.5 18.6h4.8"/>
+              <path d="M12.9 18.6h7.6"/>
+              <circle
+                cx="10.6"
+                cy="18.6"
+                r="2.25"
+                fill="var(--surface)"
+              />
+            </g>
           </svg>
         </span>
 
-        <span>
+        <span class="bottom-nav-label">
           Ajustes
         </span>
 
@@ -1985,6 +2008,7 @@
         ></span>
       </button>
     </nav>
+
 
     <!-- =====================================================
          DIALOG - HISTORY
