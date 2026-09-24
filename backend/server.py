@@ -1,10 +1,17 @@
-"""AGCN LIVE / ALIVE HTTP + SSE server.
+"""AGCN LIVE HTTP + SSE server - V2.1.
 
-This server keeps the current frontend compatible while exposing
-Product Context V1 and Sales Coach V2 endpoints.
+Mantem a interface atual compativel e expoe:
+- monitoramento Shopee/TikTok;
+- Live Coach;
+- Product Context V1;
+- Sales Coach V2;
+- Live History V1.
 
-Run:
-    python -m backend.server
+Historico sem login:
+- o frontend gera um owner_key anonimo;
+- fetch usa X-AGCN-Owner;
+- EventSource pode usar ?owner=...;
+- o owner_key separa o historico de cada navegador.
 """
 
 from __future__ import annotations
@@ -34,9 +41,7 @@ from .runtime import (
 
 
 DIST = (
-    Path(__file__)
-    .resolve()
-    .parents[1]
+    Path(__file__).resolve().parents[1]
     / "dist"
 )
 
@@ -70,6 +75,10 @@ ALLOWED_ORIGINS = {
     if value.strip()
 }
 
+OWNER_RE = re.compile(
+    r"^[A-Za-z0-9_-]{16,160}$"
+)
+
 _sessions = {}
 _registry_lock = threading.Lock()
 
@@ -83,6 +92,7 @@ class Session:
         self.runtime = load_runtime()
         self.lock = threading.RLock()
         self.touched = time.monotonic()
+        self.history_owner = None
 
 
 def _cleanup_stale_sessions():
@@ -166,14 +176,14 @@ def _session(
 
 
 # ============================================================
-# HTTP HANDLER
+# HTTP
 # ============================================================
 
 class Handler(
     BaseHTTPRequestHandler
 ):
     server_version = (
-        "AGCNLive/2.0"
+        "AGCNLive/2.1"
     )
 
     # --------------------------------------------------------
@@ -185,10 +195,18 @@ class Handler(
         fmt,
         *args,
     ):
+        entry = fmt % args
+
         entry = re.sub(
             r"sid=[A-Za-z0-9_-]+",
             "sid=[redacted]",
-            fmt % args,
+            entry,
+        )
+
+        entry = re.sub(
+            r"owner=[A-Za-z0-9_-]+",
+            "owner=[redacted]",
+            entry,
         )
 
         print(
@@ -199,7 +217,7 @@ class Handler(
         )
 
     # --------------------------------------------------------
-    # ORIGIN / HEADERS
+    # ORIGIN
     # --------------------------------------------------------
 
     def _origin(self):
@@ -228,12 +246,15 @@ class Handler(
 
         if (
             origin in same_origin
-            or origin
-            in ALLOWED_ORIGINS
+            or origin in ALLOWED_ORIGINS
         ):
             return origin
 
         return None
+
+    # --------------------------------------------------------
+    # HEADERS
+    # --------------------------------------------------------
 
     def _headers(
         self,
@@ -290,7 +311,8 @@ class Handler(
                 "Access-Control-Allow-Headers",
                 (
                     "Content-Type, "
-                    "X-AGCN-Session"
+                    "X-AGCN-Session, "
+                    "X-AGCN-Owner"
                 ),
             )
 
@@ -336,7 +358,7 @@ class Handler(
         )
 
     # --------------------------------------------------------
-    # SESSION ID
+    # IDS
     # --------------------------------------------------------
 
     def _sid(
@@ -355,8 +377,82 @@ class Handler(
             )[0]
         )
 
+    def _owner(
+        self,
+        url,
+        *,
+        required=False,
+    ):
+        owner = (
+            self.headers.get(
+                "X-AGCN-Owner"
+            )
+            or parse_qs(
+                url.query
+            ).get(
+                "owner",
+                [None],
+            )[0]
+        )
+
+        if owner is None:
+            if required:
+                raise ValueError(
+                    "Identificador de historico ausente."
+                )
+            return None
+
+        owner = str(
+            owner
+        ).strip()
+
+        if not OWNER_RE.fullmatch(
+            owner
+        ):
+            raise ValueError(
+                "Identificador de historico invalido."
+            )
+
+        return owner
+
+    def _bind_owner(
+        self,
+        session,
+        url,
+        *,
+        required=False,
+    ):
+        owner = self._owner(
+            url,
+            required=required,
+        )
+
+        if owner is None:
+            return None
+
+        if (
+            session.history_owner
+            == owner
+        ):
+            return owner
+
+        result = (
+            session.runtime.set_history_owner(
+                owner
+            )
+        )
+
+        session.history_owner = (
+            result.get(
+                "owner_key"
+            )
+            or owner
+        )
+
+        return session.history_owner
+
     # --------------------------------------------------------
-    # JSON BODY
+    # BODY
     # --------------------------------------------------------
 
     def _read_json_body(self):
@@ -454,25 +550,32 @@ class Handler(
             )
             return
 
-        # ----------------------------------------------------
+        # ====================================================
         # HEALTH
-        # ----------------------------------------------------
+        # ====================================================
 
         if url.path == "/api/health":
             self._json({
-                "ok": True,
-                "name": "AGCN LIVE",
-                "runtime": "v2",
-                "transport": "sse",
-                "sales_coach": "v2",
-                "product_context": "v1",
+                "ok":
+                    True,
+                "name":
+                    "AGCN LIVE",
+                "runtime":
+                    "v2.1",
+                "transport":
+                    "sse",
+                "sales_coach":
+                    "v2",
+                "product_context":
+                    "v1",
+                "live_history":
+                    "v1",
             })
             return
 
-        # ----------------------------------------------------
+        # ====================================================
         # FULL STATE
-        # Creates a session when necessary.
-        # ----------------------------------------------------
+        # ====================================================
 
         if url.path == "/api/state":
             try:
@@ -485,6 +588,12 @@ class Handler(
                 )
 
                 with session.lock:
+                    self._bind_owner(
+                        session,
+                        url,
+                        required=False,
+                    )
+
                     state = (
                         session.runtime.status()
                     )
@@ -494,6 +603,22 @@ class Handler(
                     session_id=sid,
                 )
 
+            except (
+                ValueError,
+                TypeError,
+                KeyError,
+            ) as exc:
+                self._json(
+                    {
+                        "ok": False,
+                        "message":
+                            str(
+                                exc
+                            ),
+                    },
+                    400,
+                )
+
             except Exception as exc:
                 self._error(
                     exc
@@ -501,11 +626,9 @@ class Handler(
 
             return
 
-        # ----------------------------------------------------
+        # ====================================================
         # PRODUCT CONTEXT
-        # Convenient endpoint for Interface V9.
-        # Also creates session when necessary.
-        # ----------------------------------------------------
+        # ====================================================
 
         if (
             url.path
@@ -521,6 +644,12 @@ class Handler(
                 )
 
                 with session.lock:
+                    self._bind_owner(
+                        session,
+                        url,
+                        required=False,
+                    )
+
                     product_context = (
                         session.runtime
                         .product_context_state()
@@ -528,11 +657,28 @@ class Handler(
 
                 self._json(
                     {
-                        "ok": True,
+                        "ok":
+                            True,
                         "product_context":
                             product_context,
                     },
                     session_id=sid,
+                )
+
+            except (
+                ValueError,
+                TypeError,
+                KeyError,
+            ) as exc:
+                self._json(
+                    {
+                        "ok": False,
+                        "message":
+                            str(
+                                exc
+                            ),
+                    },
+                    400,
                 )
 
             except Exception as exc:
@@ -542,40 +688,280 @@ class Handler(
 
             return
 
-        # ----------------------------------------------------
-        # SSE
-        # ----------------------------------------------------
+        # ====================================================
+        # HISTORY SUMMARY
+        #
+        # GET /api/history/summary?days=7
+        # GET /api/history/summary?days=30
+        # ====================================================
 
-        if url.path == "/api/events":
-            sid, session = _session(
-                self._sid(
-                    url
-                ),
-                create=False,
-            )
+        if (
+            url.path
+            == "/api/history/summary"
+        ):
+            try:
+                query = parse_qs(
+                    url.query
+                )
 
-            if not session:
+                days = (
+                    query.get(
+                        "days",
+                        ["7"],
+                    )[0]
+                )
+
+                sid, session = (
+                    _session(
+                        self._sid(
+                            url
+                        )
+                    )
+                )
+
+                with session.lock:
+                    self._bind_owner(
+                        session,
+                        url,
+                        required=True,
+                    )
+
+                    summary = (
+                        session.runtime
+                        .history_summary(
+                            days=days
+                        )
+                    )
+
+                self._json(
+                    {
+                        "ok":
+                            True,
+                        "summary":
+                            summary,
+                    },
+                    session_id=sid,
+                )
+
+            except (
+                ValueError,
+                TypeError,
+                KeyError,
+            ) as exc:
                 self._json(
                     {
                         "ok": False,
                         "message":
-                            "Sessao expirada. "
-                            "Atualize a pagina.",
+                            str(
+                                exc
+                            ),
                     },
-                    401,
+                    400,
                 )
-                return
 
-            self._headers(
-                200,
-                (
-                    "text/event-stream; "
-                    "charset=utf-8"
-                ),
-                session_id=sid,
-            )
+            except Exception as exc:
+                self._error(
+                    exc
+                )
 
+            return
+
+        # ====================================================
+        # HISTORY RECENT
+        #
+        # GET /api/history/recent?limit=20
+        # ====================================================
+
+        if (
+            url.path
+            == "/api/history/recent"
+        ):
             try:
+                query = parse_qs(
+                    url.query
+                )
+
+                limit = (
+                    query.get(
+                        "limit",
+                        ["20"],
+                    )[0]
+                )
+
+                sid, session = (
+                    _session(
+                        self._sid(
+                            url
+                        )
+                    )
+                )
+
+                with session.lock:
+                    self._bind_owner(
+                        session,
+                        url,
+                        required=True,
+                    )
+
+                    items = (
+                        session.runtime
+                        .history_recent(
+                            limit=limit
+                        )
+                    )
+
+                self._json(
+                    {
+                        "ok":
+                            True,
+                        "items":
+                            items,
+                    },
+                    session_id=sid,
+                )
+
+            except (
+                ValueError,
+                TypeError,
+                KeyError,
+            ) as exc:
+                self._json(
+                    {
+                        "ok": False,
+                        "message":
+                            str(
+                                exc
+                            ),
+                    },
+                    400,
+                )
+
+            except Exception as exc:
+                self._error(
+                    exc
+                )
+
+            return
+
+        # ====================================================
+        # LAST FINISHED LIVE
+        #
+        # O summary ja devolve last_live global do owner.
+        # ====================================================
+
+        if (
+            url.path
+            == "/api/history/last"
+        ):
+            try:
+                sid, session = (
+                    _session(
+                        self._sid(
+                            url
+                        )
+                    )
+                )
+
+                with session.lock:
+                    self._bind_owner(
+                        session,
+                        url,
+                        required=True,
+                    )
+
+                    summary = (
+                        session.runtime
+                        .history_summary(
+                            days=7
+                        )
+                    )
+
+                    last_live = (
+                        summary.get(
+                            "last_live"
+                        )
+                    )
+
+                self._json(
+                    {
+                        "ok":
+                            True,
+                        "last_live":
+                            last_live,
+                    },
+                    session_id=sid,
+                )
+
+            except (
+                ValueError,
+                TypeError,
+                KeyError,
+            ) as exc:
+                self._json(
+                    {
+                        "ok": False,
+                        "message":
+                            str(
+                                exc
+                            ),
+                    },
+                    400,
+                )
+
+            except Exception as exc:
+                self._error(
+                    exc
+                )
+
+            return
+
+        # ====================================================
+        # SSE
+        #
+        # EventSource nao aceita header customizado.
+        # A Interface V9 usara:
+        # /api/events?sid=...&owner=...
+        # ====================================================
+
+        if url.path == "/api/events":
+            try:
+                sid, session = (
+                    _session(
+                        self._sid(
+                            url
+                        ),
+                        create=False,
+                    )
+                )
+
+                if not session:
+                    self._json(
+                        {
+                            "ok": False,
+                            "message":
+                                "Sessao expirada. "
+                                "Atualize a pagina.",
+                        },
+                        401,
+                    )
+                    return
+
+                with session.lock:
+                    self._bind_owner(
+                        session,
+                        url,
+                        required=False,
+                    )
+
+                self._headers(
+                    200,
+                    (
+                        "text/event-stream; "
+                        "charset=utf-8"
+                    ),
+                    session_id=sid,
+                )
+
                 while True:
                     session.touched = (
                         time.monotonic()
@@ -613,11 +999,35 @@ class Handler(
             ):
                 return
 
+            except (
+                ValueError,
+                TypeError,
+                KeyError,
+            ) as exc:
+                try:
+                    self._json(
+                        {
+                            "ok": False,
+                            "message":
+                                str(
+                                    exc
+                                ),
+                        },
+                        400,
+                    )
+                except Exception:
+                    pass
+
+            except Exception as exc:
+                self._error(
+                    exc
+                )
+
             return
 
-        # ----------------------------------------------------
+        # ====================================================
         # STATIC FRONTEND
-        # ----------------------------------------------------
+        # ====================================================
 
         path = (
             (
@@ -645,7 +1055,9 @@ class Handler(
             )
             return
 
-        data = path.read_bytes()
+        data = (
+            path.read_bytes()
+        )
 
         self._headers(
             200,
@@ -706,6 +1118,14 @@ class Handler(
             )
 
             with session.lock:
+                # Fundamental: o owner precisa estar definido
+                # ANTES de /api/start criar o registro.
+                self._bind_owner(
+                    session,
+                    url,
+                    required=False,
+                )
+
                 result = self._command(
                     session.runtime,
                     url.path,
@@ -736,7 +1156,9 @@ class Handler(
                 {
                     "ok": False,
                     "message":
-                        str(exc),
+                        str(
+                            exc
+                        ),
                 },
                 503,
             )
@@ -750,7 +1172,9 @@ class Handler(
                 {
                     "ok": False,
                     "message":
-                        str(exc),
+                        str(
+                            exc
+                        ),
                 },
                 400,
             )
@@ -791,14 +1215,10 @@ class Handler(
                     "devem formar um objeto JSON."
                 )
 
-            platform = (
+            return runtime.start(
                 data.get(
                     "platform"
-                )
-            )
-
-            return runtime.start(
-                platform,
+                ),
                 data.get(
                     "value"
                 ),
@@ -836,20 +1256,6 @@ class Handler(
 
         # ====================================================
         # PRODUCT CONTEXT V1
-        #
-        # POST /api/product-context
-        #
-        # Accepted fields:
-        # name
-        # regular_price
-        # current_price
-        # discount
-        # description
-        # additional_info
-        # mode
-        #
-        # replace defaults to False so partial edits do not
-        # erase fields that were not sent.
         # ====================================================
 
         if (
@@ -901,10 +1307,6 @@ class Handler(
                 )
             )
 
-        # ====================================================
-        # ACTIVATE SALES COACH
-        # ====================================================
-
         if (
             path
             == "/api/product-context/activate"
@@ -918,12 +1320,6 @@ class Handler(
                 )
             )
 
-        # ====================================================
-        # DEACTIVATE SALES COACH
-        #
-        # Product remains configured.
-        # ====================================================
-
         if (
             path
             == "/api/product-context/deactivate"
@@ -932,10 +1328,6 @@ class Handler(
                 runtime
                 .product_context_deactivate()
             )
-
-        # ====================================================
-        # CLEAR PRODUCT
-        # ====================================================
 
         if (
             path
@@ -947,7 +1339,7 @@ class Handler(
             )
 
         # ====================================================
-        # SALES MODE: leve / maximo
+        # SALES MODE
         # ====================================================
 
         if path == "/api/sales-mode":
@@ -959,10 +1351,6 @@ class Handler(
 
         # ====================================================
         # LEGACY COMPATIBILITY
-        #
-        # Current frontend still calls these routes.
-        # They remain temporarily until Interface V9 replaces
-        # the old Sales Coach controls.
         # ====================================================
 
         if path == "/api/sales-style":
@@ -1067,7 +1455,9 @@ def main():
         )
     )
 
-    server.daemon_threads = True
+    server.daemon_threads = (
+        True
+    )
 
     print(
         (
