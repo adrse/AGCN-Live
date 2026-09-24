@@ -1,3 +1,24 @@
+"""
+AGCN LIVE - SHOPEE WORKER V2.0
+
+Objetivo:
+- resolver link curto da Shopee LIVE;
+- capturar dados reais da sessao;
+- preservar cookies/contexto obtidos durante a resolucao;
+- reutilizar headers observados no navegador quando necessario;
+- tentar caminhos de fallback sem inventar dados;
+- falhar de forma explicita em vez de ficar em "CONECTANDO..." para sempre;
+- manter a API publica esperada pelo Live Engine e pela Interface V8.
+
+IMPORTANTE:
+- nenhum dado de metricas e fabricado;
+- nenhuma informacao comercial e inferida;
+- o Worker apenas coleta a LIVE;
+- Product Context e Sales Coach V2 continuam separados.
+"""
+
+from __future__ import annotations
+
 import asyncio
 import json
 import time
@@ -6,29 +27,21 @@ import uuid
 from collections import deque
 from datetime import datetime
 from urllib.parse import (
-    urlparse,
     parse_qs,
-    unquote
+    unquote,
+    urlparse,
 )
 from zoneinfo import ZoneInfo
 
 import requests
 
 from playwright.async_api import (
-    async_playwright
+    async_playwright,
 )
 
 from IPython.display import (
-    clear_output
+    clear_output,
 )
-
-
-# ============================================================
-# AGCN SHOPEE WORKER
-#
-# Esta celula apenas CARREGA o motor.
-# Quem inicia a LIVE sera a interface unica.
-# ============================================================
 
 
 # ============================================================
@@ -43,12 +56,30 @@ LINK_CURTO = None
 # ============================================================
 
 DURACAO = 300
-
 MAX_COMENTARIOS = 10
 
 TIMEZONE = ZoneInfo(
     "America/Araguaina"
 )
+
+SHOPEE_MOBILE_UA = (
+    "Mozilla/5.0 "
+    "(Linux; Android 14; Pixel 7) "
+    "AppleWebKit/537.36 "
+    "(KHTML, like Gecko) "
+    "Chrome/140.0.0.0 "
+    "Mobile Safari/537.36"
+)
+
+SHOPEE_RESOLVE_TIMEOUT_MS = 30000
+SHOPEE_SESSION_TIMEOUT_MS = 12000
+
+# Antes de existir a primeira metrica, nao deixamos a interface
+# presa para sempre em "Conectando".
+SHOPEE_MAX_INITIAL_FAILURES = 3
+
+# Depois de ja ter conectado, falhas transitorias podem ocorrer.
+SHOPEE_MAX_POST_CONNECT_FAILURES = 12
 
 
 # ============================================================
@@ -56,51 +87,27 @@ TIMEZONE = ZoneInfo(
 # ============================================================
 
 estado = {
+    "sessionId": None,
+    "chatroomId": None,
+    "loja": None,
+    "username": None,
+    "titulo": None,
+    "viewers": None,
+    "likes": None,
+    "shares": None,
+    "products": None,
+    "memberCnt": None,
+    "status": None,
+    "ultimaMetrica": None,
+    "ultimoChat": None,
+    "erro": None,
+    "urlExpandida": None,
 
-    "sessionId":
-        None,
-
-    "chatroomId":
-        None,
-
-    "loja":
-        None,
-
-    "username":
-        None,
-
-    "titulo":
-        None,
-
-    "viewers":
-        None,
-
-    "likes":
-        None,
-
-    "shares":
-        None,
-
-    "products":
-        None,
-
-    "memberCnt":
-        None,
-
-    "status":
-        None,
-
-    "ultimaMetrica":
-        None,
-
-    "ultimoChat":
-        None,
-
-    "erro":
-        None,
-
-    "urlExpandida":
-        None,
+    # Diagnostico operacional.
+    "metodoSessao": None,
+    "sessionHttpStatus": None,
+    "tentativasSessao": 0,
+    "ultimaFalhaSessao": None,
 }
 
 
@@ -110,439 +117,462 @@ comentarios = deque(
 
 comentarios_ids = set()
 
-
 encerrar = False
 
-
 LIVE_URL = None
-
 SESSION_ID = None
-
 ENDPOINT_SESSION = None
+
+# Estado obtido pelo navegador durante a resolucao do link curto.
+# Reutilizar este contexto e importante porque a Shopee pode
+# depender de cookies/tokens criados nessa primeira navegacao.
+SHOPEE_STORAGE_STATE = None
+
+# Somente headers selecionados. Nunca sao impressos nos logs.
+SHOPEE_SESSION_HEADERS = {}
 
 
 # ============================================================
-# RESOLVEDOR MOBILE DO LINK CURTO
+# HELPERS DE URL
 # ============================================================
 
 def host_permitido(
-    host
+    host,
 ):
-
     host = (
         host
         or ""
     ).lower().rstrip(".")
 
-
     return (
-
         host == "br.shp.ee"
-
-        or
-
-        host.endswith(
+        or host.endswith(
             ".shp.ee"
         )
-
-        or
-
-        host == "shopee.com.br"
-
-        or
-
-        host.endswith(
+        or host == "shopee.com.br"
+        or host.endswith(
             ".shopee.com.br"
         )
-
     )
 
 
 def validar_url_shopee(
-    url
+    url,
 ):
-
-    p = urlparse(
-        url
+    parsed = urlparse(
+        str(
+            url
+            or ""
+        ).strip()
     )
 
-
-    if p.scheme != "https":
-
+    if parsed.scheme != "https":
         raise ValueError(
-
-            f"Somente HTTPS e permitido: "
-            f"{p.scheme}"
-
+            "Somente HTTPS e permitido."
         )
 
-
     if not host_permitido(
-        p.hostname
+        parsed.hostname
     ):
-
         raise ValueError(
-
-            f"Dominio nao permitido: "
-            f"{p.hostname}"
-
+            "Dominio da Shopee nao permitido."
         )
 
 
 def extrair_session_id(
-    url
+    url,
 ):
-
     try:
-
         query = parse_qs(
             urlparse(
-                url
+                str(
+                    url
+                    or ""
+                )
             ).query
         )
 
-
-        valor = query.get(
+        value = query.get(
             "session"
         )
 
-
-        if not valor:
-
+        if not value:
             return None
 
-
         return str(
-            valor[0]
+            value[0]
         )
 
-
     except Exception:
-
         return None
 
 
 def detectar_live(
-    url
+    url,
 ):
-
     if not url:
-
         return None
 
-
-    candidato = str(
+    candidate = str(
         url
     )
 
-
-    # ----------------------------------------
-    # Decodifica URLs percent-encoded
-    # ----------------------------------------
-
     for _ in range(3):
-
-        novo = unquote(
-            candidato
+        decoded = unquote(
+            candidate
         )
 
-
-        if novo == candidato:
-
+        if decoded == candidate:
             break
 
-
-        candidato = novo
-
+        candidate = decoded
 
     try:
-
-        p = urlparse(
-            candidato
+        parsed = urlparse(
+            candidate
         )
-
-
     except Exception:
-
         return None
-
 
     if (
-        p.hostname
-        !=
-        "live.shopee.com.br"
+        parsed.hostname
+        != "live.shopee.com.br"
     ):
-
         return None
-
 
     session_id = (
         extrair_session_id(
-            candidato
+            candidate
         )
     )
 
-
     if not session_id:
-
         return None
 
-
     return {
-
         "url":
-            candidato,
-
+            candidate,
         "sessionId":
             session_id,
-
     }
 
 
+def _session_endpoint_url():
+    if not SESSION_ID:
+        return None
+
+    return (
+        "https://live.shopee.com.br"
+        f"/api/v1/session/{SESSION_ID}"
+    )
+
+
+def _is_session_url(
+    url,
+):
+    if not ENDPOINT_SESSION:
+        return False
+
+    try:
+        path = (
+            urlparse(
+                str(
+                    url
+                    or ""
+                )
+            ).path
+            or ""
+        ).rstrip("/")
+
+        target = (
+            str(
+                ENDPOINT_SESSION
+            ).rstrip("/")
+        )
+
+        return path == target
+
+    except Exception:
+        return False
+
+
+# ============================================================
+# HEADERS / CONTEXTO
+# ============================================================
+
+def _filtrar_headers_sessao(
+    headers,
+):
+    if not isinstance(
+        headers,
+        dict,
+    ):
+        return {}
+
+    allowed = {
+        "accept",
+        "accept-language",
+        "client-info",
+        "referer",
+        "user-agent",
+        "x-livestreaming-source",
+        "x-ls-sz-token",
+    }
+
+    result = {}
+
+    for key, value in (
+        headers.items()
+    ):
+        normalized = str(
+            key
+        ).strip().lower()
+
+        if (
+            normalized in allowed
+            and value is not None
+        ):
+            result[
+                normalized
+            ] = str(
+                value
+            )
+
+    return result
+
+
+def _base_session_headers():
+    headers = {
+        "accept":
+            "application/json, text/plain, */*",
+        "accept-language":
+            "pt-BR,pt;q=0.9,en;q=0.8",
+        "referer":
+            str(
+                LIVE_URL
+                or "https://live.shopee.com.br/"
+            ),
+        "user-agent":
+            SHOPEE_MOBILE_UA,
+        "x-livestreaming-source":
+            "shopee",
+    }
+
+    headers.update(
+        _filtrar_headers_sessao(
+            SHOPEE_SESSION_HEADERS
+        )
+    )
+
+    return headers
+
+
+async def _guardar_contexto(
+    context,
+):
+    global SHOPEE_STORAGE_STATE
+
+    try:
+        SHOPEE_STORAGE_STATE = (
+            await context.storage_state()
+        )
+    except Exception:
+        SHOPEE_STORAGE_STATE = None
+
+
+def _guardar_headers_request(
+    request,
+):
+    global SHOPEE_SESSION_HEADERS
+
+    try:
+        if not _is_session_url(
+            request.url
+        ):
+            return
+
+        headers = (
+            request.headers
+            if isinstance(
+                request.headers,
+                dict,
+            )
+            else {}
+        )
+
+        selected = (
+            _filtrar_headers_sessao(
+                headers
+            )
+        )
+
+        if selected:
+            SHOPEE_SESSION_HEADERS.update(
+                selected
+            )
+
+    except Exception:
+        pass
+
+
+# ============================================================
+# RESOLVER LINK CURTO
+# ============================================================
+
 async def resolver_link_mobile(
     browser,
-    link
+    link,
 ):
-
     """
-    Recebe APENAS um link curto br.shp.ee
-    e resolve a LIVE em contexto mobile,
-    observando a navegacao real da Shopee.
-    """
+    Resolve https://br.shp.ee/... dentro de um navegador mobile.
 
+    Alem do URL final, preserva storage_state do contexto para que a
+    consulta da sessao possa reutilizar cookies criados pela Shopee.
+    """
 
     validar_url_shopee(
         link
     )
 
-
     host_inicial = (
-
         urlparse(
             link
         ).hostname
-
         or ""
-
     ).lower()
-
 
     if (
         host_inicial
-        !=
-        "br.shp.ee"
+        != "br.shp.ee"
     ):
-
         raise ValueError(
-
             "Informe um link curto no formato "
             "https://br.shp.ee/..."
-
         )
-
-
-    # ========================================================
-    # CONTEXTO MOBILE
-    # ========================================================
 
     context = (
         await browser.new_context(
-
-            user_agent=(
-
-                "Mozilla/5.0 "
-                "(iPhone; CPU iPhone OS 18_0 like Mac OS X) "
-                "AppleWebKit/605.1.15 "
-                "(KHTML, like Gecko) "
-                "Version/18.0 "
-                "Mobile/15E148 "
-                "Safari/604.1"
-
-            ),
-
+            user_agent=
+                SHOPEE_MOBILE_UA,
             viewport={
                 "width": 390,
-                "height": 844
+                "height": 844,
             },
-
             screen={
                 "width": 390,
-                "height": 844
+                "height": 844,
             },
-
             device_scale_factor=3,
-
             is_mobile=True,
-
             has_touch=True,
-
             locale="pt-BR",
-
             timezone_id=
                 "America/Araguaina",
-
         )
     )
 
-
     page = await context.new_page()
-
-
     urls_vistas = set()
 
-
     def registrar_request(
-        request
+        request,
     ):
-
         try:
-
             urls_vistas.add(
                 request.url
             )
-
-
         except Exception:
-
             pass
-
 
     page.on(
         "request",
-        registrar_request
+        registrar_request,
     )
 
-
     try:
-
-        # ====================================================
-        # ABRIR LINK CURTO
-        # ====================================================
-
         try:
-
             await page.goto(
-
                 link,
-
                 wait_until=
                     "domcontentloaded",
-
-                timeout=30000,
-
+                timeout=
+                    SHOPEE_RESOLVE_TIMEOUT_MS,
             )
-
-
         except Exception:
-
-            # Mesmo que haja timeout parcial,
-            # continuamos observando a navegacao.
-
+            # Redirect pode ter acontecido antes do timeout.
             pass
 
-
-        # ====================================================
-        # OBSERVAR POR ATE 30 SEGUNDOS
-        # ====================================================
-
         for _ in range(60):
-
-
-            # ------------------------------------------------
-            # 1. URL PRINCIPAL
-            # ------------------------------------------------
-
             achou = detectar_live(
                 page.url
             )
 
-
             if achou:
-
                 validar_url_shopee(
-                    achou["url"]
+                    achou[
+                        "url"
+                    ]
                 )
-
+                await _guardar_contexto(
+                    context
+                )
                 return achou
-
-
-            # ------------------------------------------------
-            # 2. REQUESTS VISTOS PELO NAVEGADOR
-            # ------------------------------------------------
 
             for url in list(
                 urls_vistas
             ):
-
                 achou = detectar_live(
                     url
                 )
 
-
                 if achou:
-
                     validar_url_shopee(
-                        achou["url"]
+                        achou[
+                            "url"
+                        ]
                     )
-
+                    await _guardar_contexto(
+                        context
+                    )
                     return achou
 
-
-            # ------------------------------------------------
-            # 3. LINKS EXISTENTES NO DOM
-            # ------------------------------------------------
-
             try:
-
                 links = (
                     await page.eval_on_selector_all(
-
                         "a[href]",
-
                         """
                         els => els
                             .map(e => e.href)
                             .filter(Boolean)
-                        """
-
+                        """,
                     )
                 )
 
-
                 for url in links:
-
                     achou = detectar_live(
                         url
                     )
 
-
                     if achou:
-
                         validar_url_shopee(
-                            achou["url"]
+                            achou[
+                                "url"
+                            ]
                         )
-
+                        await _guardar_contexto(
+                            context
+                        )
                         return achou
 
-
             except Exception:
-
                 pass
 
-
-            # ------------------------------------------------
-            # 4. CANONICAL / OG:URL
-            # ------------------------------------------------
-
             try:
-
-                candidatos = (
+                candidates = (
                     await page.evaluate(
-
                         """
                         () => {
-
-                            const r = [];
+                            const result = [];
 
                             const canonical =
                                 document.querySelector(
@@ -550,7 +580,7 @@ async def resolver_link_mobile(
                                 );
 
                             if (canonical?.href) {
-                                r.push(
+                                result.push(
                                     canonical.href
                                 );
                             }
@@ -561,55 +591,46 @@ async def resolver_link_mobile(
                                 );
 
                             if (og?.content) {
-                                r.push(
+                                result.push(
                                     og.content
                                 );
                             }
 
-                            return r;
+                            return result;
                         }
                         """
-
                     )
                 )
 
-
-                for url in candidatos:
-
+                for url in candidates:
                     achou = detectar_live(
                         url
                     )
 
-
                     if achou:
-
                         validar_url_shopee(
-                            achou["url"]
+                            achou[
+                                "url"
+                            ]
                         )
-
+                        await _guardar_contexto(
+                            context
+                        )
                         return achou
 
-
             except Exception:
-
                 pass
-
 
             await asyncio.sleep(
                 0.5
             )
 
-
         raise RuntimeError(
-
             "Nao consegui resolver o link curto "
             "para uma LIVE com session=..."
-
         )
 
-
     finally:
-
         await context.close()
 
 
@@ -618,7 +639,6 @@ async def resolver_link_mobile(
 # ============================================================
 
 def agora():
-
     return datetime.now(
         TIMEZONE
     ).strftime(
@@ -627,428 +647,773 @@ def agora():
 
 
 def tempo_desde(
-    ts
+    ts,
 ):
-
     if ts is None:
-
         return "aguardando"
 
-
-    segundos = (
+    seconds = (
         time.time()
-        -
-        ts
+        - ts
+    )
+
+    if seconds < 1:
+        return "agora"
+
+    return (
+        f"{seconds:.1f}s atras"
     )
 
 
-    if segundos < 1:
+def _extract_session(
+    payload,
+):
+    if not isinstance(
+        payload,
+        dict,
+    ):
+        return None
 
-        return "agora"
+    data = (
+        payload.get(
+            "data"
+        )
+        or {}
+    )
 
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return None
+
+    session = data.get(
+        "session"
+    )
+
+    if not isinstance(
+        session,
+        dict,
+    ):
+        session = data
+
+    if not isinstance(
+        session,
+        dict,
+    ):
+        return None
+
+    if not (
+        "viewer_count" in session
+        or "like_cnt" in session
+        or "chatroom_id" in session
+        or "member_cnt" in session
+        or "status" in session
+    ):
+        return None
+
+    return session
+
+
+def _apply_session(
+    session,
+    *,
+    method,
+    http_status=200,
+):
+    if not isinstance(
+        session,
+        dict,
+    ):
+        return False
+
+    estado[
+        "chatroomId"
+    ] = (
+        session.get(
+            "chatroom_id"
+        )
+        or estado[
+            "chatroomId"
+        ]
+    )
+
+    estado[
+        "loja"
+    ] = (
+        session.get(
+            "nickname"
+        )
+        or estado[
+            "loja"
+        ]
+    )
+
+    estado[
+        "username"
+    ] = (
+        session.get(
+            "username"
+        )
+        or estado[
+            "username"
+        ]
+    )
+
+    estado[
+        "titulo"
+    ] = (
+        session.get(
+            "title"
+        )
+        or estado[
+            "titulo"
+        ]
+    )
+
+    estado[
+        "viewers"
+    ] = session.get(
+        "viewer_count",
+        estado[
+            "viewers"
+        ],
+    )
+
+    estado[
+        "likes"
+    ] = session.get(
+        "like_cnt",
+        estado[
+            "likes"
+        ],
+    )
+
+    estado[
+        "shares"
+    ] = session.get(
+        "share_cnt",
+        estado[
+            "shares"
+        ],
+    )
+
+    estado[
+        "products"
+    ] = session.get(
+        "items_cnt",
+        estado[
+            "products"
+        ],
+    )
+
+    estado[
+        "memberCnt"
+    ] = session.get(
+        "member_cnt",
+        estado[
+            "memberCnt"
+        ],
+    )
+
+    estado[
+        "status"
+    ] = session.get(
+        "status",
+        estado[
+            "status"
+        ],
+    )
+
+    estado[
+        "ultimaMetrica"
+    ] = time.time()
+
+    estado[
+        "metodoSessao"
+    ] = method
+
+    estado[
+        "sessionHttpStatus"
+    ] = http_status
+
+    estado[
+        "ultimaFalhaSessao"
+    ] = None
+
+    estado[
+        "erro"
+    ] = None
+
+    return True
+
+
+def _safe_json_loads(
+    text,
+):
+    try:
+        return json.loads(
+            text
+        )
+    except Exception:
+        return None
+
+
+def _failure_message(
+    label,
+    detail=None,
+):
+    label = str(
+        label
+        or "Falha desconhecida"
+    ).strip()
+
+    detail = str(
+        detail
+        or ""
+    ).strip()
+
+    if detail:
+        return (
+            label
+            + ": "
+            + detail[:300]
+        )
+
+    return label[:350]
+
+
+# ============================================================
+# CAPTURA DA SESSAO - CAMINHO 1
+# RESPOSTA NATIVA DA PAGINA
+# ============================================================
+
+async def _session_from_native_response(
+    page,
+):
+    try:
+        async with page.expect_response(
+            lambda response:
+                _is_session_url(
+                    response.url
+                ),
+            timeout=
+                SHOPEE_SESSION_TIMEOUT_MS,
+        ) as info:
+            try:
+                await page.goto(
+                    LIVE_URL,
+                    wait_until=
+                        "domcontentloaded",
+                    timeout=
+                        SHOPEE_SESSION_TIMEOUT_MS,
+                )
+            except Exception:
+                # A resposta da API pode chegar mesmo com timeout parcial.
+                pass
+
+        response = await info.value
+
+    except Exception as exc:
+        detail = str(
+            exc
+            or ""
+        )
+
+        if "Timeout" in type(
+            exc
+        ).__name__ or "timeout" in detail.lower():
+            return (
+                False,
+                "A pagina nao chamou o endpoint da sessao no tempo esperado.",
+            )
+
+        return (
+            False,
+            _failure_message(
+                "Falha observando a requisicao nativa",
+                exc,
+            ),
+        )
+
+    try:
+        _guardar_headers_request(
+            response.request
+        )
+    except Exception:
+        pass
+
+    status = int(
+        response.status
+    )
+
+    estado[
+        "sessionHttpStatus"
+    ] = status
+
+    if status != 200:
+        return (
+            False,
+            f"Endpoint de sessao respondeu HTTP {status}.",
+        )
+
+    try:
+        payload = await response.json()
+    except Exception as exc:
+        return (
+            False,
+            _failure_message(
+                "Resposta HTTP 200 sem JSON valido",
+                exc,
+            ),
+        )
+
+    session = _extract_session(
+        payload
+    )
+
+    if session is None:
+        return (
+            False,
+            "Resposta da sessao nao trouxe metricas reconhecidas.",
+        )
 
     return (
-        f"{segundos:.1f}s atras"
+        _apply_session(
+            session,
+            method="native_response",
+            http_status=status,
+        ),
+        None,
     )
 
 
 # ============================================================
-# SHOPEE WORKER VALIDADO
+# CAPTURA DA SESSAO - CAMINHO 2
+# FETCH EXECUTADO DENTRO DA PAGINA
+# ============================================================
+
+async def _session_from_page_fetch(
+    page,
+):
+    endpoint = (
+        _session_endpoint_url()
+    )
+
+    if not endpoint:
+        return (
+            False,
+            "Session ID indisponivel.",
+        )
+
+    headers = (
+        _base_session_headers()
+    )
+
+    # Headers que o browser nao permite definir via fetch.
+    browser_headers = {
+        key: value
+        for key, value in headers.items()
+        if key not in {
+            "user-agent",
+            "referer",
+        }
+    }
+
+    try:
+        result = await page.evaluate(
+            """
+            async ({url, headers}) => {
+                try {
+                    const response = await fetch(
+                        url,
+                        {
+                            method: 'GET',
+                            credentials: 'include',
+                            cache: 'no-store',
+                            headers
+                        }
+                    );
+
+                    return {
+                        ok: response.ok,
+                        status: response.status,
+                        text: await response.text()
+                    };
+                } catch (error) {
+                    return {
+                        ok: false,
+                        status: 0,
+                        text: '',
+                        error: String(error)
+                    };
+                }
+            }
+            """,
+            {
+                "url": endpoint,
+                "headers":
+                    browser_headers,
+            },
+        )
+
+    except Exception as exc:
+        return (
+            False,
+            _failure_message(
+                "Fetch dentro da pagina falhou",
+                exc,
+            ),
+        )
+
+    if not isinstance(
+        result,
+        dict,
+    ):
+        return (
+            False,
+            "Fetch da pagina retornou resultado invalido.",
+        )
+
+    status = int(
+        result.get(
+            "status"
+        )
+        or 0
+    )
+
+    estado[
+        "sessionHttpStatus"
+    ] = status
+
+    if status != 200:
+        detail = (
+            result.get(
+                "error"
+            )
+            or ""
+        )
+
+        message = (
+            f"Fetch da pagina respondeu HTTP {status}."
+        )
+
+        if detail:
+            message += (
+                " "
+                + str(
+                    detail
+                )[:200]
+            )
+
+        return (
+            False,
+            message,
+        )
+
+    payload = _safe_json_loads(
+        result.get(
+            "text"
+        )
+        or ""
+    )
+
+    session = _extract_session(
+        payload
+    )
+
+    if session is None:
+        return (
+            False,
+            "Fetch da pagina recebeu JSON sem metricas reconhecidas.",
+        )
+
+    return (
+        _apply_session(
+            session,
+            method="page_fetch",
+            http_status=status,
+        ),
+        None,
+    )
+
+
+# ============================================================
+# CAPTURA DA SESSAO - CAMINHO 3
+# APIREQUESTCONTEXT COMPARTILHANDO COOKIES
+# ============================================================
+
+async def _session_from_context_request(
+    context,
+):
+    endpoint = (
+        _session_endpoint_url()
+    )
+
+    if not endpoint:
+        return (
+            False,
+            "Session ID indisponivel.",
+        )
+
+    try:
+        response = await context.request.get(
+            endpoint,
+            headers=
+                _base_session_headers(),
+            timeout=
+                SHOPEE_SESSION_TIMEOUT_MS,
+        )
+
+    except Exception as exc:
+        return (
+            False,
+            _failure_message(
+                "Requisicao direta no contexto falhou",
+                exc,
+            ),
+        )
+
+    status = int(
+        response.status
+    )
+
+    estado[
+        "sessionHttpStatus"
+    ] = status
+
+    if status != 200:
+        return (
+            False,
+            f"Requisicao no contexto respondeu HTTP {status}.",
+        )
+
+    try:
+        payload = await response.json()
+    except Exception as exc:
+        return (
+            False,
+            _failure_message(
+                "Requisicao HTTP 200 sem JSON valido",
+                exc,
+            ),
+        )
+
+    session = _extract_session(
+        payload
+    )
+
+    if session is None:
+        return (
+            False,
+            "Requisicao no contexto recebeu JSON sem metricas reconhecidas.",
+        )
+
+    return (
+        _apply_session(
+            session,
+            method="context_request",
+            http_status=status,
+        ),
+        None,
+    )
+
+
+# ============================================================
+# SHOPEE SESSION READER
 # ============================================================
 
 async def ler_sessao(
-    browser
+    browser,
 ):
-
     context = None
-
+    errors = []
 
     try:
+        context_kwargs = {
+            "user_agent":
+                SHOPEE_MOBILE_UA,
+            "locale":
+                "pt-BR",
+            "viewport": {
+                "width": 390,
+                "height": 844,
+            },
+            "screen": {
+                "width": 390,
+                "height": 844,
+            },
+            "device_scale_factor":
+                3,
+            "is_mobile":
+                True,
+            "has_touch":
+                True,
+            "timezone_id":
+                "America/Araguaina",
+        }
 
-        # ====================================================
-        # CONTEXTO NOVO PARA CADA LEITURA
-        # ====================================================
+        if isinstance(
+            SHOPEE_STORAGE_STATE,
+            dict,
+        ):
+            context_kwargs[
+                "storage_state"
+            ] = SHOPEE_STORAGE_STATE
 
         context = (
             await browser.new_context(
-
-                locale="pt-BR",
-
-                viewport={
-                    "width": 1024,
-                    "height": 720
-                },
-
+                **context_kwargs
             )
         )
 
-
         page = await context.new_page()
 
-
-        # ====================================================
-        # BLOQUEAR RECURSOS PESADOS
-        # ====================================================
+        # Captura headers da requisicao de sessao quando a pagina
+        # realmente fizer essa chamada.
+        page.on(
+            "request",
+            _guardar_headers_request,
+        )
 
         async def filtrar(
-            route
+            route,
         ):
-
-            tipo = (
+            resource_type = (
                 route
                 .request
                 .resource_type
             )
 
-
-            if tipo in {
-
+            if resource_type in {
                 "image",
                 "media",
                 "font",
-
             }:
-
                 await route.abort()
-
-
             else:
-
                 await route.continue_()
-
 
         await page.route(
             "**/*",
-            filtrar
+            filtrar,
         )
 
+        # ----------------------------------------------------
+        # 1. Caminho original: observar a propria Shopee.
+        # ----------------------------------------------------
 
-        # ====================================================
-        # ESPERAR A PROPRIA SHOPEE SOLICITAR A SESSAO
-        # ====================================================
-
-        async with page.expect_response(
-
-            lambda r:
-
-                urlparse(
-                    r.url
-                ).path
-
-                ==
-
-                ENDPOINT_SESSION,
-
-            timeout=20000,
-
-        ) as info:
-
-
-            try:
-
-                await page.goto(
-
-                    LIVE_URL,
-
-                    wait_until=
-                        "commit",
-
-                    timeout=20000,
-
-                )
-
-
-            except Exception:
-
-                pass
-
-
-        response = (
-            await info.value
+        success, error = (
+            await _session_from_native_response(
+                page
+            )
         )
 
+        if success:
+            await _guardar_contexto(
+                context
+            )
+            return True
 
-        # ====================================================
-        # HTTP
-        # ====================================================
+        if error:
+            errors.append(
+                error
+            )
 
-        if (
-            response.status
-            !=
-            200
-        ):
-
-            return False
-
-
-        # ====================================================
-        # JSON
-        # ====================================================
-
+        # A navegacao pode nao ter concluido quando expect_response
+        # expirou. Tentamos manter a pagina da LIVE aberta.
         try:
-
-            payload = (
-                await response.json()
-            )
-
-
-        except Exception:
-
-            return False
-
-
-        data = (
-            payload.get(
-                "data"
-            )
-
-            or {}
-
-        )
-
-
-        sessao = data.get(
-            "session"
-        )
-
-
-        if not isinstance(
-            sessao,
-            dict
-        ):
-
-            sessao = (
-
-                data
-
-                if isinstance(
-                    data,
-                    dict
+            if (
+                not page.url
+                or "live.shopee.com.br"
+                not in page.url
+            ):
+                await page.goto(
+                    LIVE_URL,
+                    wait_until=
+                        "domcontentloaded",
+                    timeout=
+                        SHOPEE_SESSION_TIMEOUT_MS,
                 )
+        except Exception:
+            pass
 
-                else None
+        await _guardar_contexto(
+            context
+        )
 
+        # ----------------------------------------------------
+        # 2. Fetch no proprio browser.
+        # ----------------------------------------------------
+
+        success, error = (
+            await _session_from_page_fetch(
+                page
+            )
+        )
+
+        if success:
+            await _guardar_contexto(
+                context
+            )
+            return True
+
+        if error:
+            errors.append(
+                error
             )
 
+        # ----------------------------------------------------
+        # 3. Request API do proprio BrowserContext.
+        # Compartilha cookies com o contexto.
+        # ----------------------------------------------------
 
-        if not isinstance(
-            sessao,
-            dict
-        ):
+        success, error = (
+            await _session_from_context_request(
+                context
+            )
+        )
 
-            return False
+        if success:
+            await _guardar_contexto(
+                context
+            )
+            return True
 
-
-        # ====================================================
-        # CONFIRMAR SESSAO
-        # ====================================================
-
-        if not (
-
-            "viewer_count"
-            in
-            sessao
-
-            or
-
-            "like_cnt"
-            in
-            sessao
-
-            or
-
-            "chatroom_id"
-            in
-            sessao
-
-        ):
-
-            return False
-
-
-        # ====================================================
-        # ATUALIZAR ESTADO
-        # ====================================================
-
-        estado[
-            "chatroomId"
-        ] = (
-
-            sessao.get(
-                "chatroom_id"
+        if error:
+            errors.append(
+                error
             )
 
-            or
-
-            estado[
-                "chatroomId"
-            ]
-
+        detail = (
+            errors[-1]
+            if errors
+            else "Falha desconhecida consultando a sessao."
         )
 
-
         estado[
-            "loja"
-        ] = (
-
-            sessao.get(
-                "nickname"
-            )
-
-            or
-
-            estado[
-                "loja"
-            ]
-
-        )
-
-
-        estado[
-            "username"
-        ] = (
-
-            sessao.get(
-                "username"
-            )
-
-            or
-
-            estado[
-                "username"
-            ]
-
-        )
-
-
-        estado[
-            "titulo"
-        ] = (
-
-            sessao.get(
-                "title"
-            )
-
-            or
-
-            estado[
-                "titulo"
-            ]
-
-        )
-
-
-        estado[
-            "viewers"
-        ] = sessao.get(
-
-            "viewer_count",
-
-            estado[
-                "viewers"
-            ]
-
-        )
-
-
-        estado[
-            "likes"
-        ] = sessao.get(
-
-            "like_cnt",
-
-            estado[
-                "likes"
-            ]
-
-        )
-
-
-        estado[
-            "shares"
-        ] = sessao.get(
-
-            "share_cnt",
-
-            estado[
-                "shares"
-            ]
-
-        )
-
-
-        estado[
-            "products"
-        ] = sessao.get(
-
-            "items_cnt",
-
-            estado[
-                "products"
-            ]
-
-        )
-
-
-        estado[
-            "memberCnt"
-        ] = sessao.get(
-
-            "member_cnt",
-
-            estado[
-                "memberCnt"
-            ]
-
-        )
-
-
-        estado[
-            "status"
-        ] = sessao.get(
-
-            "status",
-
-            estado[
-                "status"
-            ]
-
-        )
-
-
-        estado[
-            "ultimaMetrica"
-        ] = time.time()
-
-
-        estado[
-            "erro"
-        ] = None
-
-
-        return True
-
-
-    except Exception as e:
-
-        estado[
-            "erro"
-        ] = str(e)
+            "ultimaFalhaSessao"
+        ] = detail
 
         return False
 
+    except Exception as exc:
+        estado[
+            "ultimaFalhaSessao"
+        ] = (
+            _failure_message(
+                "Falha no leitor de sessao",
+                exc,
+            )
+        )
+
+        return False
 
     finally:
-
         if context:
-
             try:
-
                 await context.close()
-
-
             except Exception:
-
                 pass
 
 
@@ -1057,25 +1422,98 @@ async def ler_sessao(
 # ============================================================
 
 async def metricas_worker(
-    browser
+    browser,
 ):
-
     global encerrar
 
+    consecutive_failures = 0
+    ever_connected = False
 
     while not encerrar:
-
-        sucesso = await ler_sessao(
+        success = await ler_sessao(
             browser
         )
 
+        estado[
+            "tentativasSessao"
+        ] = (
+            int(
+                estado.get(
+                    "tentativasSessao"
+                )
+                or 0
+            )
+            + 1
+        )
+
+        if success:
+            consecutive_failures = 0
+            ever_connected = True
+
+            await asyncio.sleep(
+                0.8
+            )
+
+            continue
+
+        consecutive_failures += 1
+
+        detail = (
+            estado.get(
+                "ultimaFalhaSessao"
+            )
+            or "Falha sem detalhe."
+        )
+
+        print(
+            (
+                "[Shopee] tentativa de sessao falhou "
+                f"({consecutive_failures}): "
+                f"{detail}"
+            ),
+            flush=True,
+        )
+
+        limit = (
+            SHOPEE_MAX_POST_CONNECT_FAILURES
+            if ever_connected
+            else SHOPEE_MAX_INITIAL_FAILURES
+        )
+
+        if (
+            consecutive_failures
+            >= limit
+        ):
+            if ever_connected:
+                estado[
+                    "erro"
+                ] = (
+                    "Conexao com a Shopee foi perdida. "
+                    f"Ultimo erro: {detail}"
+                )
+            else:
+                estado[
+                    "erro"
+                ] = (
+                    "Nao foi possivel conectar a Shopee. "
+                    f"Ultimo erro: {detail}"
+                )
+
+            print(
+                (
+                    "[Shopee] monitoramento encerrado: "
+                    + estado[
+                        "erro"
+                    ]
+                ),
+                flush=True,
+            )
+
+            encerrar = True
+            break
 
         await asyncio.sleep(
-
-            0.4
-            if sucesso
-            else 1.2
-
+            1.5
         )
 
 
@@ -1086,167 +1524,101 @@ async def metricas_worker(
 def requisicao_chat(
     chatroom_id,
     chat_uuid,
-    cursor
+    cursor,
 ):
-
     url = (
-
         "https://chatroom-live.shopee.com.br"
-
         f"/api/v1/fetch/chatroom/"
-
         f"{chatroom_id}"
-
         f"/message"
-
     )
 
-
     return requests.get(
-
         url,
-
         params={
-
             "uuid":
                 chat_uuid,
-
             "timestamp":
                 cursor,
-
             "version":
                 "v2",
-
         },
-
         headers={
-
             "Accept":
                 "application/json,text/plain,*/*",
-
             "User-Agent":
-                "Mozilla/5.0",
-
+                SHOPEE_MOBILE_UA,
             "X-Livestreaming-Source":
                 "shopee",
-
         },
-
         timeout=15,
-
     )
 
 
 async def chat_worker():
-
     global encerrar
-
 
     chat_uuid = str(
         uuid.uuid4()
     )
 
-
     cursor = (
         int(
             time.time()
         )
-        -
-        10
+        - 10
     )
 
-
-    # ========================================================
-    # ESPERAR CHATROOM ID
-    # ========================================================
-
     while (
-
         not estado[
             "chatroomId"
         ]
-
-        and
-
-        not encerrar
-
+        and not encerrar
     ):
-
         await asyncio.sleep(
             0.5
         )
 
-
-    # ========================================================
-    # LOOP DO CHAT
-    # ========================================================
-
     while not encerrar:
-
-
         chatroom = estado[
             "chatroomId"
         ]
 
-
         if not chatroom:
-
             await asyncio.sleep(
                 1
             )
-
             continue
 
-
         try:
-
             response = (
                 await asyncio.to_thread(
-
                     requisicao_chat,
-
                     chatroom,
-
                     chat_uuid,
-
                     cursor,
-
                 )
             )
-
 
             if (
                 response.status_code
-                !=
-                200
+                != 200
             ):
-
                 await asyncio.sleep(
                     2
                 )
-
                 continue
 
-
-            resposta = (
+            payload = (
                 response.json()
             )
 
-
             data = (
-
-                resposta.get(
+                payload.get(
                     "data"
                 )
-
                 or {}
-
             )
-
-
-            # =================================================
-            # CURSOR
-            # =================================================
 
             if (
                 data.get(
@@ -1254,593 +1626,358 @@ async def chat_worker():
                 )
                 is not None
             ):
-
                 cursor = int(
                     data[
                         "timestamp"
                     ]
                 )
 
-
-            # =================================================
-            # MENSAGENS
-            # =================================================
-
-            for grupo in (
-
+            for group in (
                 data.get(
                     "message"
                 )
-
                 or []
-
             ):
-
-
-                for msg in grupo.get(
+                for message in group.get(
                     "msgs",
-                    []
+                    [],
                 ):
-
-
-                    msg_id = str(
-
-                        msg.get(
+                    message_id = str(
+                        message.get(
                             "id",
-                            ""
+                            "",
                         )
-
                     )
-
-
-                    # -----------------------------------------
-                    # DEDUPE
-                    # -----------------------------------------
 
                     if (
-
-                        msg_id
-
-                        and
-
-                        msg_id
-                        in
-                        comentarios_ids
-
+                        message_id
+                        and message_id
+                        in comentarios_ids
                     ):
-
                         continue
 
-
-                    if msg_id:
-
+                    if message_id:
                         comentarios_ids.add(
-                            msg_id
+                            message_id
                         )
 
-
-                    # -----------------------------------------
-                    # NOME
-                    # -----------------------------------------
-
-                    nome = (
-
-                        msg.get(
+                    name = (
+                        message.get(
                             "display_name"
                         )
-
-                        or
-
-                        msg.get(
+                        or message.get(
                             "nickname"
                         )
-
-                        or
-
-                        "Usuario"
-
+                        or "Usuario"
                     )
 
-
-                    # -----------------------------------------
-                    # CONTEUDO
-                    # -----------------------------------------
-
-                    bruto = msg.get(
-                        "content"
+                    raw_content = (
+                        message.get(
+                            "content"
+                        )
                     )
 
-
-                    texto = None
-
+                    text = None
 
                     if isinstance(
-                        bruto,
-                        str
+                        raw_content,
+                        str,
                     ):
-
                         try:
-
-                            conteudo = (
+                            parsed_content = (
                                 json.loads(
-                                    bruto
+                                    raw_content
                                 )
                             )
 
-
-                            texto = (
-
-                                conteudo.get(
+                            text = (
+                                parsed_content.get(
                                     "content_v2"
                                 )
-
-                                or
-
-                                conteudo.get(
+                                or parsed_content.get(
                                     "content"
                                 )
-
                             )
 
-
                         except Exception:
+                            text = raw_content
 
-                            texto = bruto
-
-
-                    if texto:
-
+                    if text:
                         comentarios.append({
-
                             "hora":
                                 agora(),
-
                             "usuario":
-                                nome,
-
+                                name,
                             "texto":
-                                texto,
-
+                                text,
                         })
-
 
             estado[
                 "ultimoChat"
             ] = time.time()
 
-
-            # =================================================
-            # INTERVALO DO CHAT
-            # =================================================
-
-            intervalo = data.get(
+            interval = data.get(
                 "poll_interval",
-                3
+                3,
             )
-
 
             try:
-
-                intervalo = float(
-                    intervalo
+                interval = float(
+                    interval
                 )
-
-
             except Exception:
-
-                intervalo = 3
-
+                interval = 3
 
             await asyncio.sleep(
-
                 max(
                     2,
-                    intervalo
+                    interval,
                 )
-
             )
 
-
         except Exception:
-
             await asyncio.sleep(
                 2
             )
 
 
 # ============================================================
-# PAINEL ORIGINAL DO WORKER
-#
-# Nossa interface unica podera substituir esta funcao
-# temporariamente por um painel silencioso.
+# PAINEL ORIGINAL
 # ============================================================
 
 async def painel():
-
     global encerrar
 
-
-    inicio = time.time()
-
+    start = time.time()
 
     while (
-
         not encerrar
-
-        and
-
-        time.time()
-        -
-        inicio
-        <
-        DURACAO
-
+        and time.time()
+        - start
+        < DURACAO
     ):
-
-
         clear_output(
             wait=True
         )
 
-
-        loja = (
-
+        shop = (
             estado[
                 "loja"
             ]
-
-            or
-
-            estado[
+            or estado[
                 "username"
             ]
-
-            or
-
-            "Carregando..."
-
+            or "Carregando..."
         )
-
 
         print(
             "=" * 60
         )
-
         print(
             "AGCN SHOPEE LIVE"
         )
-
         print(
             "=" * 60
         )
-
-
         print(
-            loja
+            shop
         )
-
 
         if estado[
             "titulo"
         ]:
-
             print(
                 estado[
                     "titulo"
                 ]
             )
 
-
         print()
-
-
         print(
-
             "ESPECTADORES :",
-
-            estado[
-                "viewers"
-            ]
-
-            if
-
-            estado[
-                "viewers"
-            ]
-            is not None
-
-            else "-"
-
+            (
+                estado[
+                    "viewers"
+                ]
+                if estado[
+                    "viewers"
+                ]
+                is not None
+                else "-"
+            ),
         )
-
-
         print(
-
             "LIKES        :",
-
-            estado[
-                "likes"
-            ]
-
-            if
-
-            estado[
-                "likes"
-            ]
-            is not None
-
-            else "-"
-
+            (
+                estado[
+                    "likes"
+                ]
+                if estado[
+                    "likes"
+                ]
+                is not None
+                else "-"
+            ),
         )
-
-
         print(
-
             "COMPART.     :",
-
-            estado[
-                "shares"
-            ]
-
-            if
-
-            estado[
-                "shares"
-            ]
-            is not None
-
-            else "-"
-
+            (
+                estado[
+                    "shares"
+                ]
+                if estado[
+                    "shares"
+                ]
+                is not None
+                else "-"
+            ),
         )
-
-
         print(
-
             "PRODUTOS     :",
-
-            estado[
-                "products"
-            ]
-
-            if
-
-            estado[
-                "products"
-            ]
-            is not None
-
-            else "-"
-
+            (
+                estado[
+                    "products"
+                ]
+                if estado[
+                    "products"
+                ]
+                is not None
+                else "-"
+            ),
         )
-
-
-        print(
-
-            "MEMBER CNT   :",
-
-            estado[
-                "memberCnt"
-            ]
-
-            if
-
-            estado[
-                "memberCnt"
-            ]
-            is not None
-
-            else "-"
-
-        )
-
-
         print()
-
-
         print(
-
             "Metricas:",
-
             tempo_desde(
-
                 estado[
                     "ultimaMetrica"
                 ]
-
-            )
-
+            ),
         )
-
-
         print()
 
-        print(
-            "-" * 60
-        )
-
-        print(
-            "COMENTARIOS"
-        )
-
-        print(
-            "-" * 60
-        )
-
-
-        if not comentarios:
-
+        if estado[
+            "erro"
+        ]:
             print(
-                "Aguardando comentarios..."
-            )
-
-
-        else:
-
-            for comentario in comentarios:
-
-                print(
-
-                    f"[{comentario['hora']}] "
-
-                    f"{comentario['usuario']}: "
-
-                    f"{comentario['texto']}"
-
-                )
-
-
-        print()
-
-
-        print(
-
-            "Chat:",
-
-            tempo_desde(
-
+                "ERRO:",
                 estado[
-                    "ultimoChat"
-                ]
-
+                    "erro"
+                ],
             )
-
-        )
-
-
-        print()
-
-
-        print(
-
-            "Monitoramento ativo. "
-            "Interrompa a celula para parar."
-
-        )
-
 
         await asyncio.sleep(
             0.5
         )
 
-
     encerrar = True
 
 
 # ============================================================
-# EXECUCAO PRINCIPAL DO WORKER
+# EXECUCAO PRINCIPAL
 # ============================================================
 
 async def main():
-
     global encerrar
     global LIVE_URL
     global SESSION_ID
     global ENDPOINT_SESSION
-
+    global SHOPEE_STORAGE_STATE
+    global SHOPEE_SESSION_HEADERS
 
     encerrar = False
 
+    # Sempre limpar artefatos da LIVE anterior.
+    SHOPEE_STORAGE_STATE = None
+    SHOPEE_SESSION_HEADERS = {}
 
-    # ========================================================
-    # VALIDAR LINK
-    # ========================================================
+    estado[
+        "metodoSessao"
+    ] = None
+
+    estado[
+        "sessionHttpStatus"
+    ] = None
+
+    estado[
+        "tentativasSessao"
+    ] = 0
+
+    estado[
+        "ultimaFalhaSessao"
+    ] = None
+
+    estado[
+        "erro"
+    ] = None
 
     if (
-
         not LINK_CURTO
-
-        or
-
-        "COLE_AQUI"
-        in
-        LINK_CURTO
-
+        or "COLE_AQUI"
+        in str(
+            LINK_CURTO
+        )
     ):
+        estado[
+            "erro"
+        ] = (
+            "Informe um link valido da Shopee LIVE."
+        )
 
         print(
-
-            "Cole primeiro o link curto "
-            "da LIVE em LINK_CURTO."
-
+            estado[
+                "erro"
+            ],
+            flush=True,
         )
 
         return
 
-
-    # ========================================================
-    # PLAYWRIGHT
-    # ========================================================
-
-    async with async_playwright() as p:
-
-
+    async with async_playwright() as playwright:
         browser = (
-            await p.chromium.launch(
-
+            await playwright.chromium.launch(
                 headless=True,
-
                 args=[
-
                     "--no-sandbox",
-
                     "--disable-dev-shm-usage",
-
                 ],
-
             )
         )
-
 
         clear_output(
             wait=True
         )
 
-
         print(
             "=" * 60
         )
-
         print(
             "AGCN SHOPEE"
         )
-
         print(
             "=" * 60
         )
-
         print()
-
         print(
-            "Link curto recebido:"
+            "Link recebido:"
         )
-
         print(
             LINK_CURTO
         )
-
         print()
-
         print(
             "Resolvendo link automaticamente..."
         )
 
-
-        # ====================================================
-        # RESOLVER LINK
-        # ====================================================
-
         try:
-
             resolvido = (
                 await resolver_link_mobile(
-
                     browser,
-
-                    LINK_CURTO.strip()
-
+                    str(
+                        LINK_CURTO
+                    ).strip(),
                 )
             )
-
 
             LIVE_URL = (
                 resolvido[
@@ -1848,161 +1985,113 @@ async def main():
                 ]
             )
 
-
             SESSION_ID = (
                 resolvido[
                     "sessionId"
                 ]
             )
 
-
             ENDPOINT_SESSION = (
-
                 f"/api/v1/session/"
                 f"{SESSION_ID}"
-
             )
-
 
             estado[
                 "sessionId"
             ] = SESSION_ID
 
-
             estado[
                 "urlExpandida"
             ] = LIVE_URL
 
+        except Exception as exc:
+            estado[
+                "erro"
+            ] = (
+                "Nao foi possivel resolver a LIVE da Shopee. "
+                + _failure_message(
+                    "Detalhe",
+                    exc,
+                )
+            )
 
-        except Exception as e:
-
+            print(
+                estado[
+                    "erro"
+                ],
+                flush=True,
+            )
 
             await browser.close()
-
-
-            print()
-
-            print(
-                "Nao consegui resolver "
-                "o link curto."
-            )
-
-            print(
-                str(e)
-            )
-
-
             return
 
-
-        # ====================================================
-        # INICIAR
-        # ====================================================
-
         print()
-
         print(
             "Link resolvido com sucesso."
         )
-
         print(
             "Session ID:",
-            SESSION_ID
+            SESSION_ID,
         )
-
         print(
             "Iniciando Shopee Worker..."
         )
 
-
         await asyncio.sleep(
-            1
+            0.5
         )
-
-
-        # ====================================================
-        # TASKS
-        # ====================================================
 
         tarefa_metricas = (
             asyncio.create_task(
-
                 metricas_worker(
                     browser
                 )
-
             )
         )
-
 
         tarefa_chat = (
             asyncio.create_task(
-
                 chat_worker()
-
             )
         )
-
 
         tarefa_painel = (
             asyncio.create_task(
-
                 painel()
-
             )
         )
 
-
         try:
-
             await tarefa_painel
 
-
         except asyncio.CancelledError:
-
             pass
 
-
         finally:
-
             encerrar = True
 
-
             tarefa_metricas.cancel()
-
             tarefa_chat.cancel()
 
-
             try:
-
                 await tarefa_metricas
-
-
             except BaseException:
-
                 pass
-
 
             try:
-
                 await tarefa_chat
-
-
             except BaseException:
-
                 pass
-
 
             await browser.close()
-
 
     clear_output(
         wait=True
     )
 
-
     print(
-        "Monitoramento encerrado."
+        "Monitoramento Shopee encerrado.",
+        flush=True,
     )
 
 
@@ -2010,12 +2099,11 @@ async def main():
 # IMPORTANTE
 #
 # NAO COLOCAR:
-#
 # await main()
 #
-# A INTERFACE UNICA E O LIVE ENGINE VAO INICIAR O WORKER.
+# A Interface / Runtime inicia o Worker.
 # ============================================================
 
 print(
-    "AGCN Shopee Worker carregado."
+    "AGCN Shopee Worker V2.0 carregado."
 )
