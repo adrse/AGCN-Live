@@ -2,7 +2,7 @@
   "use strict";
 
   // =========================================================
-  // AGCN LIVE - INTERFACE V9.1
+  // AGCN LIVE - INTERFACE V9.2
   // Frontend real para Runtime/Server V2.1.
   // =========================================================
 
@@ -2478,6 +2478,113 @@
     );
   }
 
+  function coachRemainingSeconds(
+    presentation,
+    now = Date.now()
+  ) {
+    if (
+      !presentation
+      || presentation.phase !== "display"
+      || !presentation.phaseUntil
+    ) {
+      return null;
+    }
+
+    return Math.max(
+      1,
+      Math.ceil(
+        (
+          presentation.phaseUntil
+          - now
+        )
+        / 1000
+      )
+    );
+  }
+
+  function createCoachCountdown(
+    seconds
+  ) {
+    const countdown = document.createElement(
+      "span"
+    );
+
+    countdown.className = (
+      "coach-countdown"
+    );
+
+    countdown.setAttribute(
+      "aria-label",
+      "Tempo restante desta orientacao"
+    );
+
+    countdown.setAttribute(
+      "role",
+      "timer"
+    );
+
+    countdown.textContent = (
+      String(
+        seconds
+      )
+    );
+
+    return countdown;
+  }
+
+  function updateCoachCountdown(
+    channel,
+    containerId,
+    now = Date.now()
+  ) {
+    const container = $(
+      containerId
+    );
+
+    const presentation = (
+      coachPresentation[
+        channel
+      ]
+    );
+
+    if (
+      !container
+      || !presentation
+      || presentation.phase !== "display"
+    ) {
+      return;
+    }
+
+    const countdown = (
+      container.querySelector(
+        ".coach-countdown"
+      )
+    );
+
+    if (!countdown) {
+      return;
+    }
+
+    const seconds = (
+      coachRemainingSeconds(
+        presentation,
+        now
+      )
+    );
+
+    if (
+      seconds !== null
+      && countdown.textContent
+        !== String(seconds)
+    ) {
+      countdown.textContent = (
+        String(
+          seconds
+        )
+      );
+    }
+  }
+
   function renderCoachSlot(
     channel,
     containerId,
@@ -2516,10 +2623,35 @@
       presentation.phase === "display"
       && presentation.current
     ) {
-      container.replaceChildren(
+      const frame = document.createElement(
+        "div"
+      );
+
+      frame.className = (
+        "coach-message-frame"
+      );
+
+      const message = (
         createCoachMessage(
           presentation.current
         )
+      );
+
+      const seconds = (
+        coachRemainingSeconds(
+          presentation
+        )
+      );
+
+      frame.append(
+        message,
+        createCoachCountdown(
+          seconds || 1
+        )
+      );
+
+      container.replaceChildren(
+        frame
       );
 
       return;
@@ -2703,7 +2835,22 @@
       renderCoaches(
         state
       );
+      return;
     }
+
+    // A mensagem permanece a mesma, mas o contador visual
+    // precisa diminuir em tempo real: 8, 7, 6... ou 6, 5, 4...
+    updateCoachCountdown(
+      "live",
+      "live-coach-preview",
+      now
+    );
+
+    updateCoachCountdown(
+      "sales",
+      "sales-coach-preview",
+      now
+    );
   }
 
   function commentInitial(
