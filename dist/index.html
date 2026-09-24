@@ -2,58 +2,2234 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f5f3">
-  <meta name="description" content="AGCN LIVE — painel operacional de monitoramento de lives e orientações em tempo real.">
-  <title>AGCN LIVE — Painel operacional</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="stylesheet" href="/styles.css">
-  <script src="/config.js" defer></script>
-  <script src="/app.js" defer></script>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
+  <meta
+    name="theme-color"
+    content="#FFFFFF"
+  >
+
+  <meta
+    name="description"
+    content="AGCN Live - monitoramento inteligente para live commerce."
+  >
+
+  <meta
+    name="apple-mobile-web-app-capable"
+    content="yes"
+  >
+
+  <meta
+    name="apple-mobile-web-app-status-bar-style"
+    content="default"
+  >
+
+  <title>AGCN Live</title>
+
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="/favicon.svg"
+  >
+
+  <link
+    rel="stylesheet"
+    href="/styles.css"
+  >
+
+  <script
+    src="/config.js"
+    defer
+  ></script>
+
+  <script
+    src="/app.js"
+    defer
+  ></script>
 </head>
+
 <body>
-  <div class="app-shell">
-    <header class="masthead">
-      <div class="brand"><div class="brand-symbol" aria-hidden="true"><span>A</span></div><div class="brand-wordmark"><strong>AGCN <span>LIVE</span></strong><small>PAINEL OPERACIONAL</small></div></div>
-      <div class="masthead-right"><span id="clock" class="clock" aria-label="Horário atual">—</span><span id="global-status" class="connection-pill"><span class="state-dot"></span>Desconectado</span></div>
+  <div
+    id="app"
+    class="app-shell"
+  >
+    <!-- =====================================================
+         SHARED HEADER
+         ===================================================== -->
+    <header class="app-header">
+      <button
+        id="brand-home-button"
+        class="brand-button"
+        type="button"
+        data-route="home"
+        aria-label="Ir para Inicio"
+      >
+        <span
+          class="brand-mark"
+          aria-hidden="true"
+        >
+          <svg
+            viewBox="0 0 64 48"
+            role="img"
+            focusable="false"
+          >
+            <path
+              d="M10 39.5c-4.2 0-6.7-4.5-4.6-8.1L22.2 4.8C24.3 1.5 27.9 0 32 0s7.7 1.5 9.8 4.8l16.8 26.6c2.1 3.6-.4 8.1-4.6 8.1-2 0-3.8-1-4.8-2.7L36.9 17.3c-1-1.6-2.7-2.5-4.9-2.5s-3.9.9-4.9 2.5L14.8 36.8c-1 1.7-2.8 2.7-4.8 2.7Z"
+              fill="currentColor"
+            />
+            <circle
+              cx="32"
+              cy="34"
+              r="7.5"
+              fill="#0061FF"
+            />
+          </svg>
+        </span>
+
+        <span class="brand-wordmark">
+          <span class="brand-agcn">AGCN</span>
+          <span class="brand-live">Live</span>
+        </span>
+      </button>
+
+      <div class="header-actions">
+        <span
+          id="header-live-status"
+          class="header-live-status hidden"
+          aria-live="polite"
+        >
+          <span class="status-dot"></span>
+          <span id="header-live-status-text">
+            Live ativa
+          </span>
+        </span>
+
+        <button
+          id="header-notifications-button"
+          class="header-icon-button"
+          type="button"
+          aria-label="Notificacoes"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
+            <path
+              d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
     </header>
 
-    <main>
-      <section class="intro" aria-label="Visão geral"><div><span class="eyebrow">CENTRAL DE MONITORAMENTO</span><h1>Sua live, em foco.</h1><p>Acompanhe o ritmo da transmissão e receba orientações no momento certo.</p></div><div class="intro-mark" aria-hidden="true">AGCN<span> / </span>LIVE</div></section>
+    <!-- =====================================================
+         MAIN
+         ===================================================== -->
+    <main
+      id="app-main"
+      class="app-main"
+    >
+      <!-- ===================================================
+           SCREEN 1 - HOME
+           =================================================== -->
+      <section
+        id="screen-home"
+        class="app-screen screen-home is-active"
+        data-screen="home"
+        aria-labelledby="home-title"
+      >
+        <div class="screen-heading home-heading">
+          <span class="screen-kicker">
+            IN&Iacute;CIO
+          </span>
 
-      <section class="control-panel surface" aria-labelledby="setup-title">
-        <div class="surface-header"><div><span class="section-index">01 / CONFIGURAÇÃO</span><h2 id="setup-title">Iniciar monitoramento</h2></div><span id="connection-label" class="quiet-status"><span class="tiny-dot"></span>Aguardando conexão</span></div>
-        <form id="start-form" autocomplete="off">
-          <div class="form-grid"><fieldset class="platform-field"><legend>PLATAFORMA</legend><div class="segmented platform-switch" role="radiogroup" aria-label="Plataforma"><label><input type="radio" name="platform" value="shopee" checked><span>Shopee</span></label><label><input type="radio" name="platform" value="tiktok"><span>TikTok</span></label></div></fieldset>
-            <div class="live-input-field"><label for="live-input">LINK OU USUÁRIO DA LIVE</label><input id="live-input" name="live" required placeholder="Cole o link da LIVE Shopee" spellcheck="false" autocapitalize="off" aria-describedby="input-help"><small id="input-help">Link curto br.shp.ee ou URL da LIVE com sessão.</small></div>
-            <div class="action-field"><button id="start-button" class="primary-button" type="submit"><span class="button-icon" aria-hidden="true">↗</span> INICIAR MONITORAMENTO</button><button id="stop-button" class="stop-button hidden" type="button">ENCERRAR MONITORAMENTO <span aria-hidden="true">×</span></button></div>
+          <h1 id="home-title">
+            Acompanhe sua evolu&ccedil;&atilde;o
+          </h1>
+
+          <p>
+            Veja seus insights e o impacto das suas lives
+            em um s&oacute; lugar.
+          </p>
+        </div>
+
+        <div class="home-layout">
+          <div class="home-primary-column">
+            <!-- Welcome -->
+            <article class="card welcome-card">
+              <div>
+                <span class="card-eyebrow">
+                  Bem-vindo de volta!
+                </span>
+
+                <h2 id="home-insight-title">
+                  Continue monitorando suas lives para formar seu hist&oacute;rico.
+                </h2>
+
+                <p id="home-insight-description">
+                  Assim que houver dados suficientes, o AGCN Live mostrar&aacute;
+                  sua evolu&ccedil;&atilde;o aqui.
+                </p>
+              </div>
+
+              <span
+                class="soft-icon soft-icon-blue"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24">
+                  <rect
+                    x="4"
+                    y="13"
+                    width="3"
+                    height="7"
+                    rx="1.5"
+                    fill="currentColor"
+                  />
+                  <rect
+                    x="10.5"
+                    y="8"
+                    width="3"
+                    height="12"
+                    rx="1.5"
+                    fill="currentColor"
+                  />
+                  <rect
+                    x="17"
+                    y="4"
+                    width="3"
+                    height="16"
+                    rx="1.5"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+            </article>
+
+            <!-- Main metric -->
+            <article class="card primary-metric-card">
+              <span
+                class="metric-icon metric-icon-blue"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+
+              <div class="primary-metric-copy">
+                <strong id="home-primary-value">
+                  &mdash;
+                </strong>
+
+                <span id="home-primary-label">
+                  Pico de audi&ecirc;ncia
+                </span>
+
+                <span
+                  id="home-primary-change"
+                  class="metric-change hidden"
+                >
+                  &mdash;
+                </span>
+              </div>
+            </article>
+
+            <!-- Performance chart -->
+            <article class="card performance-card">
+              <div class="card-header-row">
+                <div>
+                  <span class="section-label">
+                    EVOLU&Ccedil;&Atilde;O
+                  </span>
+
+                  <h2 id="performance-title">
+                    Pico de audi&ecirc;ncia
+                  </h2>
+                </div>
+
+                <label
+                  class="period-select-wrap"
+                  for="history-period"
+                >
+                  <span class="sr-only">
+                    Per&iacute;odo
+                  </span>
+
+                  <select
+                    id="history-period"
+                    class="period-select"
+                  >
+                    <option value="7">
+                      &Uacute;ltimos 7 dias
+                    </option>
+
+                    <option value="30">
+                      &Uacute;ltimos 30 dias
+                    </option>
+                  </select>
+                </label>
+              </div>
+
+              <div
+                id="performance-chart"
+                class="performance-chart"
+                role="img"
+                aria-label="Grafico de evolucao do pico de audiencia"
+              >
+                <div
+                  id="performance-empty"
+                  class="chart-empty"
+                >
+                  <span
+                    class="chart-empty-icon"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M4 19V9M10 19V5M16 19v-7M22 19V3"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.7"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </span>
+
+                  <strong>
+                    Sem hist&oacute;rico suficiente
+                  </strong>
+
+                  <p>
+                    Seus dados aparecer&atilde;o aqui ap&oacute;s as primeiras lives monitoradas.
+                  </p>
+                </div>
+
+                <div
+                  id="performance-bars"
+                  class="performance-bars hidden"
+                  aria-hidden="true"
+                ></div>
+              </div>
+            </article>
           </div>
-        </form>
-        <div class="control-footer"><div class="footer-status"><span id="platform-current">SHOPEE SELECIONADA</span><span class="footer-separator" aria-hidden="true">/</span><span id="monitor-current">MONITORAMENTO INATIVO</span></div><span id="last-event">Aguardando dados da LIVE</span></div>
+
+          <div class="home-secondary-column">
+            <!-- Last live -->
+            <article class="card last-live-card">
+              <div class="card-header-row">
+                <div>
+                  <span class="section-label">
+                    HIST&Oacute;RICO
+                  </span>
+
+                  <h2>
+                    &Uacute;ltima live
+                  </h2>
+                </div>
+
+                <button
+                  id="open-history-button"
+                  class="link-button"
+                  type="button"
+                >
+                  Ver hist&oacute;rico
+                </button>
+              </div>
+
+              <div
+                id="last-live-content"
+                class="last-live-content"
+              >
+                <div
+                  id="last-live-empty"
+                  class="last-live-empty"
+                >
+                  <span
+                    class="soft-icon"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M4 6h16v12H4zM8 3v3M16 3v3M4 10h16"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.6"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+
+                  <div>
+                    <strong>
+                      Nenhuma live registrada
+                    </strong>
+
+                    <p>
+                      Sua &uacute;ltima transmiss&atilde;o aparecer&aacute; aqui.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  id="last-live-data"
+                  class="last-live-data hidden"
+                >
+                  <div class="last-live-platform">
+                    <span
+                      id="last-live-platform-icon"
+                      class="platform-mini-icon"
+                      aria-hidden="true"
+                    >
+                      L
+                    </span>
+                  </div>
+
+                  <div class="last-live-main">
+                    <strong id="last-live-title">
+                      &mdash;
+                    </strong>
+
+                    <span id="last-live-date">
+                      &mdash;
+                    </span>
+                  </div>
+
+                  <div class="last-live-metric">
+                    <strong id="last-live-value">
+                      &mdash;
+                    </strong>
+
+                    <span>
+                      pico de audi&ecirc;ncia
+                    </span>
+                  </div>
+
+                  <span
+                    class="row-chevron"
+                    aria-hidden="true"
+                  >
+                    &rsaquo;
+                  </span>
+                </div>
+              </div>
+            </article>
+
+            <article class="card home-quick-card">
+              <span class="section-label">
+                PR&Oacute;XIMO PASSO
+              </span>
+
+              <h2>
+                Pronto para acompanhar uma nova live?
+              </h2>
+
+              <p>
+                Configure a plataforma e inicie o monitoramento em poucos passos.
+              </p>
+
+              <button
+                id="home-configure-button"
+                class="primary-action-button"
+                type="button"
+                data-route="configure"
+              >
+                Configurar live
+                <span aria-hidden="true">&rarr;</span>
+              </button>
+            </article>
+          </div>
+        </div>
       </section>
 
-      <div id="notice" class="notice hidden" role="alert"></div>
+      <!-- ===================================================
+           SCREEN 2 - CONFIGURE
+           =================================================== -->
+      <section
+        id="screen-configure"
+        class="app-screen screen-configure"
+        data-screen="configure"
+        aria-labelledby="configure-title"
+        hidden
+      >
+        <div class="screen-heading configure-heading">
+          <span class="screen-kicker">
+            CONFIGURA&Ccedil;&Atilde;O
+          </span>
 
-      <section class="overview" aria-label="Indicadores da transmissão"><div class="overview-heading"><span class="section-index">02 / VISÃO EM TEMPO REAL</span><span id="overview-caption">Dados exibidos conforme recebidos da plataforma</span></div><div class="metric-grid"><article class="metric surface"><span>AUDIÊNCIA</span><strong id="metric-viewers">—</strong><small>Espectadores agora</small></article><article class="metric surface"><span>CURTIDAS</span><strong id="metric-likes">—</strong><small>Recebidas na LIVE</small></article><article class="metric surface"><span id="metric-three-label">COMPARTILHAMENTOS</span><strong id="metric-three">—</strong><small id="metric-three-note">Quando disponível</small></article><article class="metric surface"><span id="metric-four-label">PRODUTOS</span><strong id="metric-four">—</strong><small id="metric-four-note">Quando disponível</small></article></div></section>
+          <h1 id="configure-title">
+            Configure sua live
+          </h1>
 
-      <section class="workspace" aria-label="Coaches e comentários">
-        <article class="coach-panel live-panel surface" aria-labelledby="live-title"><div class="panel-topline"><span class="section-index">03 / ORIENTAÇÃO DA LIVE</span><span id="live-status" class="panel-state"><span class="tiny-dot"></span>Aguardando</span></div><div class="panel-heading"><div class="panel-icon" aria-hidden="true">✳</div><div><h2 id="live-title">LIVE COACH</h2><p>Sinais da transmissão, traduzidos em orientação.</p></div></div>
-          <div class="coach-stage" id="live-stage"><div class="stage-top"><span id="live-category" class="category-label">EM TEMPO REAL</span><span id="live-time" class="message-time"></span></div><div id="live-message" class="coach-message empty">As orientações aparecerão aqui durante a LIVE.</div><div class="stage-bottom"><span id="live-priority" class="priority-label"></span><span id="live-timer" class="ttl-label"></span></div><div class="ttl-track"><span id="live-progress"></span></div></div>
-          <div class="panel-controls"><span>EXIBIR ALERTAS</span><div id="alert-modes" class="segmented segmented-small" role="group" aria-label="Filtro do Live Coach"><button type="button" data-mode="all" class="selected">Todos</button><button type="button" data-mode="high">Prioridade Alta</button><button type="button" data-mode="essential">Essenciais</button></div></div>
-        </article>
+          <p>
+            Escolha a plataforma, conecte a transmiss&atilde;o e,
+            se quiser, ative o Sales Coach.
+          </p>
+        </div>
 
-        <article id="sales-panel" class="coach-panel sales-panel surface" aria-labelledby="sales-title"><div class="panel-topline"><span class="section-index">04 / ORIENTAÇÃO DE VENDAS</span><span id="sales-status" class="panel-state"><span class="tiny-dot"></span>Aguardando</span></div><div class="panel-heading"><div class="panel-icon sales-icon" aria-hidden="true">↗</div><div><h2 id="sales-title">SALES COACH</h2><p>Ideias de fala para o produto informado.</p></div></div><span class="shopee-badge">PRODUTO SHOPEE OU TIKTOK SHOP</span>
-          <form id="product-link-form" class="product-link-form"><label for="product-link">LINK DO PRODUTO</label><div class="product-link-controls"><input id="product-link" type="url" inputmode="url" placeholder="Cole o link do produto que está vendendo" spellcheck="false" autocapitalize="off" required><button type="submit" class="secondary-button">ANALISAR PRODUTO <span aria-hidden="true">→</span></button></div><small id="product-link-help">Inicie a LIVE e informe o link do produto desta plataforma.</small></form>
-          <div class="coach-stage" id="sales-stage"><div class="stage-top"><span id="sales-category" class="category-label">PRODUTO EM FOCO</span><span id="sales-time" class="message-time"></span></div><div id="sales-message" class="coach-message empty">Informe o link do produto para receber orientações de vendas.</div><div class="stage-bottom"><span id="sales-product" class="product-label">Aguardando link do produto</span><span id="sales-timer" class="ttl-label"></span></div><div class="ttl-track"><span id="sales-progress"></span></div></div>
-          <div id="product-conflict" class="product-conflict hidden" role="status"></div>
-          <div class="panel-controls sales-controls"><span>ESTILO DE COMUNICAÇÃO</span><div id="sales-styles" class="segmented segmented-small" role="group" aria-label="Estilo do Sales Coach"><button type="button" data-style="equilibrado" class="selected">Equilibrado</button><button type="button" data-style="pressao_feira">Pressão / Feira</button></div></div>
-          <details id="product-details" class="product-details"><summary><span><span class="disclosure-plus" aria-hidden="true">+</span> Informações manuais do produto</span><span class="detail-hint">Opcional</span></summary><form id="product-form"><div class="product-form-grid"><div><label for="seller-price">PREÇO INFORMADO PELO VENDEDOR</label><input id="seller-price" inputmode="decimal" placeholder="Ex.: 49,90"></div><div><label for="seller-info">INFORMAÇÕES ADICIONAIS</label><textarea id="seller-info" rows="3" placeholder="Fatos confirmados sobre o produto"></textarea></div><div><label for="seller-facts">FATOS ESTRUTURADOS (JSON)</label><textarea id="seller-facts" rows="2" placeholder='Ex.: {"material":"algodão"}' spellcheck="false"></textarea></div></div><p>Esses dados passam pelo Product Extractor. Preços divergentes ficam identificados.</p><button id="save-product" class="secondary-button" type="submit">SALVAR INFORMAÇÕES <span aria-hidden="true">→</span></button></form></details>
-        </article>
+        <div class="configure-layout">
+          <div class="configure-visual-column">
+            <!-- Orbit -->
+            <section
+              class="platform-orbit"
+              aria-label="Shopee, TikTok e recursos do AGCN Live"
+            >
+              <div
+                class="orbit-ring orbit-ring-one"
+                aria-hidden="true"
+              ></div>
 
-        <aside class="comments-panel surface" aria-labelledby="comments-title"><div class="panel-topline"><span class="section-index">05 / COMUNIDADE</span><span id="comment-count" class="count-pill">0</span></div><div class="comments-heading"><h2 id="comments-title">Comentários</h2><p>Acompanhe a conversa conforme ela acontece.</p></div><div id="comments-list" class="comments-list" role="log" aria-live="polite" aria-relevant="additions"><div class="comments-empty"><span class="empty-icon" aria-hidden="true">☷</span><strong>Aguardando comentários</strong><p>As mensagens da LIVE aparecerão aqui.</p></div></div><div class="comments-footer"><span class="tiny-dot"></span><span id="comments-update">ATUALIZAÇÃO EM TEMPO REAL</span></div></aside>
+              <div
+                class="orbit-ring orbit-ring-two"
+                aria-hidden="true"
+              ></div>
+
+              <span
+                class="orbit-dot orbit-dot-one"
+                aria-hidden="true"
+              ></span>
+
+              <span
+                class="orbit-dot orbit-dot-two"
+                aria-hidden="true"
+              ></span>
+
+              <span
+                class="orbit-dot orbit-dot-three"
+                aria-hidden="true"
+              ></span>
+
+              <div
+                class="platform-float platform-float-shopee"
+                aria-hidden="true"
+              >
+                <span class="shopee-logo-mark">
+                  <span class="shopee-handle"></span>
+                  S
+                </span>
+              </div>
+
+              <div
+                class="platform-float platform-float-tiktok"
+                aria-hidden="true"
+              >
+                <span class="tiktok-logo-mark">
+                  <svg viewBox="0 0 48 48">
+                    <path
+                      d="M28 8c2.3 5.4 5.7 8.2 11 8.8v7.3c-4.3-.1-7.8-1.3-11-3.7V32c0 8.3-6.1 12.8-12.3 12.8C8.9 44.8 4 39.9 4 33.7c0-7.2 5.8-12.5 13.2-12.5.8 0 1.6.1 2.4.2v7.5a8.2 8.2 0 0 0-2.6-.4c-3.1 0-5.5 2.1-5.5 5 0 2.7 2.1 4.6 4.8 4.6 3.3 0 5.2-2.2 5.2-6.4V8h6.5Z"
+                      fill="#FFFFFF"
+                    />
+                    <path
+                      d="M28 8c2.3 5.4 5.7 8.2 11 8.8"
+                      fill="none"
+                      stroke="#25F4EE"
+                      stroke-width="2.4"
+                    />
+                    <path
+                      d="M18 22c-7.3 0-12 5.2-12 11.7"
+                      fill="none"
+                      stroke="#FE2C55"
+                      stroke-width="2.4"
+                    />
+                  </svg>
+                </span>
+              </div>
+
+              <div
+                class="orbit-feature orbit-feature-analytics"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24">
+                  <rect
+                    x="4"
+                    y="13"
+                    width="3"
+                    height="7"
+                    rx="1.5"
+                    fill="currentColor"
+                  />
+                  <rect
+                    x="10.5"
+                    y="8"
+                    width="3"
+                    height="12"
+                    rx="1.5"
+                    fill="currentColor"
+                  />
+                  <rect
+                    x="17"
+                    y="4"
+                    width="3"
+                    height="16"
+                    rx="1.5"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+
+              <div
+                class="orbit-feature orbit-feature-audience"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24">
+                  <circle
+                    cx="9"
+                    cy="8"
+                    r="3"
+                    fill="currentColor"
+                  />
+                  <circle
+                    cx="17"
+                    cy="9"
+                    r="2.4"
+                    fill="currentColor"
+                    opacity=".7"
+                  />
+                  <path
+                    d="M4 19c.4-4 2.2-6 5-6s4.6 2 5 6M14 15c2.8 0 4.7 1.4 5 4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </div>
+
+              <div
+                class="orbit-feature orbit-feature-comments"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="M4 5h16v11H9l-5 4V5Z"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linejoin="round"
+                  />
+                  <circle
+                    cx="9"
+                    cy="10.5"
+                    r="1"
+                    fill="currentColor"
+                  />
+                  <circle
+                    cx="12"
+                    cy="10.5"
+                    r="1"
+                    fill="currentColor"
+                  />
+                  <circle
+                    cx="15"
+                    cy="10.5"
+                    r="1"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+
+              <div
+                class="orbit-feature orbit-feature-coach"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 24 24">
+                  <path
+                    d="m13.5 2-8 11H11l-.5 9 8-12H13l.5-8Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+
+              <div class="orbit-caption">
+                <span>
+                  AGCN Live
+                </span>
+
+                <strong>
+                  Tudo conectado em tempo real.
+                </strong>
+              </div>
+            </section>
+          </div>
+
+          <div class="configure-form-column">
+            <!-- Connection state -->
+            <div
+              id="configure-live-status"
+              class="connection-status-card"
+              data-state="idle"
+            >
+              <div class="connection-status-main">
+                <span
+                  class="connection-status-dot"
+                  aria-hidden="true"
+                ></span>
+
+                <div>
+                  <strong id="configure-live-status-title">
+                    Pronto para conectar
+                  </strong>
+
+                  <span id="configure-live-status-description">
+                    Configure os dados abaixo para iniciar.
+                  </span>
+                </div>
+              </div>
+
+              <span
+                id="configure-live-timer"
+                class="session-timer hidden"
+              >
+                00:00:00
+              </span>
+            </div>
+
+            <form
+              id="live-config-form"
+              class="configure-form"
+              autocomplete="off"
+            >
+              <!-- Platform -->
+              <fieldset class="form-section">
+                <legend>
+                  Plataforma da live
+                </legend>
+
+                <div
+                  id="platform-selector"
+                  class="platform-selector"
+                  role="radiogroup"
+                  aria-label="Plataforma da live"
+                >
+                  <label class="platform-option">
+                    <input
+                      type="radio"
+                      name="platform"
+                      value="shopee"
+                      checked
+                    >
+
+                    <span class="platform-option-body">
+                      <span
+                        class="platform-option-icon platform-option-icon-shopee"
+                        aria-hidden="true"
+                      >
+                        <span class="shopee-mini-bag">
+                          S
+                        </span>
+                      </span>
+
+                      <span class="platform-option-copy">
+                        <strong>
+                          Shopee
+                        </strong>
+
+                        <small>
+                          Link da live
+                        </small>
+                      </span>
+
+                      <span
+                        class="platform-option-radio"
+                        aria-hidden="true"
+                      ></span>
+                    </span>
+                  </label>
+
+                  <label class="platform-option">
+                    <input
+                      type="radio"
+                      name="platform"
+                      value="tiktok"
+                    >
+
+                    <span class="platform-option-body">
+                      <span
+                        class="platform-option-icon platform-option-icon-tiktok"
+                        aria-hidden="true"
+                      >
+                        <svg viewBox="0 0 24 24">
+                          <path
+                            d="M14 4c1.4 3 3.3 4.3 6 4.5V12c-2.1-.1-4-.7-6-2v6c0 4.1-3 6.4-6.1 6.4A5.8 5.8 0 0 1 2 16.6c0-3.7 2.9-6.3 6.6-6.3.4 0 .8 0 1.2.1v3.7a4 4 0 0 0-1.3-.2c-1.6 0-2.8 1.1-2.8 2.6 0 1.4 1.1 2.4 2.5 2.4 1.7 0 2.7-1.2 2.7-3.4V4H14Z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </span>
+
+                      <span class="platform-option-copy">
+                        <strong>
+                          TikTok
+                        </strong>
+
+                        <small>
+                          @username
+                        </small>
+                      </span>
+
+                      <span
+                        class="platform-option-radio"
+                        aria-hidden="true"
+                      ></span>
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <!-- Live input -->
+              <div class="form-section">
+                <label
+                  id="live-input-label"
+                  class="field-label"
+                  for="live-input"
+                >
+                  Link da live
+                </label>
+
+                <div class="input-with-icon">
+                  <span
+                    class="input-leading-icon"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <path
+                        d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                  </span>
+
+                  <input
+                    id="live-input"
+                    name="live"
+                    type="text"
+                    required
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                    placeholder="Cole o link da LIVE Shopee"
+                  >
+                </div>
+
+                <small
+                  id="live-input-help"
+                  class="field-help"
+                >
+                  Aceita link curto br.shp.ee ou URL da LIVE.
+                </small>
+              </div>
+
+              <!-- Sales toggle -->
+              <div class="form-section">
+                <div class="toggle-row">
+                  <span
+                    class="toggle-row-icon"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 24 24">
+                      <rect
+                        x="4"
+                        y="13"
+                        width="3"
+                        height="7"
+                        rx="1.5"
+                        fill="currentColor"
+                      />
+                      <rect
+                        x="10.5"
+                        y="8"
+                        width="3"
+                        height="12"
+                        rx="1.5"
+                        fill="currentColor"
+                      />
+                      <rect
+                        x="17"
+                        y="4"
+                        width="3"
+                        height="16"
+                        rx="1.5"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </span>
+
+                  <label
+                    class="toggle-row-copy"
+                    for="sales-coach-toggle"
+                  >
+                    <strong>
+                      Ativar Sales Coach
+                    </strong>
+
+                    <span>
+                      Receba orienta&ccedil;&otilde;es comerciais durante a live.
+                    </span>
+                  </label>
+
+                  <label class="switch-control">
+                    <input
+                      id="sales-coach-toggle"
+                      type="checkbox"
+                      role="switch"
+                      aria-controls="sales-product-section"
+                      aria-expanded="false"
+                    >
+
+                    <span
+                      class="switch-track"
+                      aria-hidden="true"
+                    >
+                      <span class="switch-thumb"></span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Product Context -->
+              <section
+                id="sales-product-section"
+                class="product-section hidden"
+                aria-labelledby="product-section-title"
+              >
+                <div class="section-divider"></div>
+
+                <div class="form-section-heading">
+                  <span class="section-label">
+                    SALES COACH
+                  </span>
+
+                  <h2 id="product-section-title">
+                    Dados do produto
+                  </h2>
+
+                  <p>
+                    Informe apenas dados confirmados. O Sales Coach
+                    n&atilde;o inventa informa&ccedil;&otilde;es ausentes.
+                  </p>
+                </div>
+
+                <div class="product-form-grid">
+                  <div class="field-group field-span-two">
+                    <label
+                      class="field-label"
+                      for="product-name"
+                    >
+                      Nome do produto
+                    </label>
+
+                    <input
+                      id="product-name"
+                      name="product_name"
+                      type="text"
+                      maxlength="180"
+                      placeholder="Ex.: NIVEA Lo&ccedil;&atilde;o Hidratante Milk"
+                    >
+                  </div>
+
+                  <div class="field-group">
+                    <label
+                      class="field-label"
+                      for="product-regular-price"
+                    >
+                      Pre&ccedil;o normal
+                    </label>
+
+                    <input
+                      id="product-regular-price"
+                      name="regular_price"
+                      type="text"
+                      inputmode="decimal"
+                      placeholder="Ex.: 22,90"
+                    >
+                  </div>
+
+                  <div class="field-group">
+                    <label
+                      class="field-label"
+                      for="product-current-price"
+                    >
+                      Pre&ccedil;o atual
+                    </label>
+
+                    <input
+                      id="product-current-price"
+                      name="current_price"
+                      type="text"
+                      inputmode="decimal"
+                      placeholder="Ex.: 14,99"
+                    >
+                  </div>
+
+                  <div class="field-group field-span-two">
+                    <label
+                      class="field-label"
+                      for="product-discount"
+                    >
+                      Desconto
+                    </label>
+
+                    <input
+                      id="product-discount"
+                      name="discount"
+                      type="text"
+                      inputmode="decimal"
+                      placeholder="Ex.: 35"
+                    >
+
+                    <small class="field-help">
+                      Pode ficar vazio para o sistema calcular quando os dois
+                      pre&ccedil;os estiverem informados.
+                    </small>
+                  </div>
+
+                  <div class="field-group field-span-two">
+                    <label
+                      class="field-label"
+                      for="product-description"
+                    >
+                      Descri&ccedil;&atilde;o
+                    </label>
+
+                    <textarea
+                      id="product-description"
+                      name="description"
+                      rows="4"
+                      maxlength="6000"
+                      placeholder="Principais caracter&iacute;sticas e benef&iacute;cios confirmados."
+                    ></textarea>
+                  </div>
+
+                  <div class="field-group field-span-two">
+                    <label
+                      class="field-label"
+                      for="product-additional-info"
+                    >
+                      Informa&ccedil;&otilde;es adicionais
+                    </label>
+
+                    <textarea
+                      id="product-additional-info"
+                      name="additional_info"
+                      rows="4"
+                      maxlength="12000"
+                      placeholder="Ex.: tamanho, cor, composi&ccedil;&atilde;o, uso, entrega, estoque, garantia, kit ou outras informa&ccedil;&otilde;es confirmadas."
+                    ></textarea>
+                  </div>
+                </div>
+
+                <!-- Sales mode -->
+                <fieldset class="sales-mode-fieldset">
+                  <legend>
+                    Intensidade
+                  </legend>
+
+                  <div
+                    id="sales-mode-selector"
+                    class="sales-mode-selector"
+                  >
+                    <label class="sales-mode-option">
+                      <input
+                        type="radio"
+                        name="sales_mode"
+                        value="leve"
+                        checked
+                      >
+
+                      <span>
+                        <strong>
+                          Leve
+                        </strong>
+
+                        <small>
+                          Menos frequente
+                        </small>
+                      </span>
+                    </label>
+
+                    <label class="sales-mode-option">
+                      <input
+                        type="radio"
+                        name="sales_mode"
+                        value="maximo"
+                      >
+
+                      <span>
+                        <strong>
+                          M&aacute;ximo
+                        </strong>
+
+                        <small>
+                          Mais ativo
+                        </small>
+                      </span>
+                    </label>
+                  </div>
+
+                  <p class="mode-description">
+                    Os dois modos vendem, respondem d&uacute;vidas,
+                    tratam obje&ccedil;&otilde;es e orientam o vendedor.
+                    O modo M&aacute;ximo apenas aumenta a intensidade.
+                  </p>
+                </fieldset>
+              </section>
+
+              <div
+                id="configure-error"
+                class="inline-feedback inline-feedback-error hidden"
+                role="alert"
+              ></div>
+
+              <div
+                id="configure-success"
+                class="inline-feedback inline-feedback-success hidden"
+                role="status"
+              ></div>
+
+              <button
+                id="activate-live-button"
+                class="activate-live-button"
+                type="submit"
+                data-state="idle"
+              >
+                <span
+                  class="activate-live-spinner hidden"
+                  aria-hidden="true"
+                ></span>
+
+                <span id="activate-live-button-text">
+                  ATIVAR LIVE
+                </span>
+
+                <span
+                  class="activate-live-arrow"
+                  aria-hidden="true"
+                >
+                  &rarr;
+                </span>
+              </button>
+
+              <button
+                id="stop-live-button"
+                class="stop-live-button hidden"
+                type="button"
+              >
+                Encerrar monitoramento
+              </button>
+            </form>
+          </div>
+        </div>
       </section>
-      <footer class="page-footer"><span>AGCN LIVE</span><span>Orientação em tempo real para sua transmissão.</span><span id="backend-status">Conectando ao servidor…</span></footer>
+
+      <!-- ===================================================
+           SCREEN 3 - MONITOR
+           =================================================== -->
+      <section
+        id="screen-monitor"
+        class="app-screen screen-monitor"
+        data-screen="monitor"
+        aria-labelledby="monitor-title"
+        hidden
+      >
+        <div class="screen-heading monitor-heading">
+          <span class="screen-kicker">
+            MONITORAR
+          </span>
+
+          <h1 id="monitor-title">
+            Tudo em uma tela
+          </h1>
+
+          <p>
+            Acompanhe dados, coment&aacute;rios e orienta&ccedil;&otilde;es
+            no mesmo lugar.
+          </p>
+        </div>
+
+        <!-- Monitor state -->
+        <div
+          id="monitor-live-status"
+          class="monitor-live-status"
+          data-state="idle"
+        >
+          <div class="monitor-live-status-left">
+            <span
+              class="monitor-status-dot"
+              aria-hidden="true"
+            ></span>
+
+            <strong id="monitor-live-status-text">
+              Nenhuma live em andamento
+            </strong>
+          </div>
+
+          <span
+            id="monitor-live-timer"
+            class="monitor-live-timer"
+          >
+            00:00:00
+          </span>
+        </div>
+
+        <div class="monitor-layout">
+          <div class="monitor-primary">
+            <!-- Metrics -->
+            <section
+              class="metrics-grid"
+              aria-label="Metricas em tempo real"
+            >
+              <article class="metric-card">
+                <span
+                  class="metric-card-icon metric-card-icon-blue"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                    />
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="3"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </span>
+
+                <strong id="metric-viewers">
+                  &mdash;
+                </strong>
+
+                <span id="metric-viewers-label">
+                  Audi&ecirc;ncia
+                </span>
+
+                <small id="metric-viewers-note">
+                  Agora
+                </small>
+              </article>
+
+              <article class="metric-card">
+                <span
+                  class="metric-card-icon metric-card-icon-pink"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M12 20s-7-4.2-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.8-7 10-7 10Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </span>
+
+                <strong id="metric-likes">
+                  &mdash;
+                </strong>
+
+                <span>
+                  Curtidas
+                </span>
+
+                <small>
+                  Na live
+                </small>
+              </article>
+
+              <article class="metric-card">
+                <span
+                  class="metric-card-icon metric-card-icon-blue"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 24">
+                    <circle
+                      cx="6"
+                      cy="12"
+                      r="2.5"
+                      fill="currentColor"
+                    />
+                    <circle
+                      cx="18"
+                      cy="6"
+                      r="2.5"
+                      fill="currentColor"
+                    />
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="2.5"
+                      fill="currentColor"
+                    />
+                    <path
+                      d="m8 11 7.5-4M8 13l7.5 4"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </span>
+
+                <strong id="metric-shares">
+                  &mdash;
+                </strong>
+
+                <span id="metric-shares-label">
+                  Compartilhamentos
+                </span>
+
+                <small id="metric-shares-note">
+                  Quando dispon&iacute;vel
+                </small>
+              </article>
+
+              <article class="metric-card">
+                <span
+                  class="metric-card-icon metric-card-icon-blue"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M8 3h8l1 4h3v14H4V7h3l1-4Z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M9 11h6"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </span>
+
+                <strong id="metric-four">
+                  &mdash;
+                </strong>
+
+                <span id="metric-four-label">
+                  Produtos
+                </span>
+
+                <small id="metric-four-note">
+                  Quando dispon&iacute;vel
+                </small>
+              </article>
+            </section>
+
+            <!-- Coaches -->
+            <div class="coach-grid">
+              <article
+                id="live-coach-panel"
+                class="coach-card"
+              >
+                <div class="coach-card-header">
+                  <div class="coach-card-title">
+                    <span
+                      class="coach-card-icon"
+                      aria-hidden="true"
+                    >
+                      <svg viewBox="0 0 24 24">
+                        <path
+                          d="m13.5 2-8 11H11l-.5 9 8-12H13l.5-8Z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </span>
+
+                    <div>
+                      <span class="section-label">
+                        ORIENTA&Ccedil;&Atilde;O
+                      </span>
+
+                      <h2>
+                        Live Coach
+                      </h2>
+                    </div>
+                  </div>
+
+                  <button
+                    id="live-coach-more-button"
+                    class="link-button"
+                    type="button"
+                  >
+                    Ver mais
+                  </button>
+                </div>
+
+                <div
+                  id="live-coach-preview"
+                  class="coach-preview"
+                >
+                  <div class="coach-empty">
+                    <strong>
+                      Aguardando sinais da live
+                    </strong>
+
+                    <p>
+                      As orienta&ccedil;&otilde;es aparecer&atilde;o aqui
+                      quando o monitoramento estiver ativo.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <article
+                id="sales-coach-panel"
+                class="coach-card hidden"
+              >
+                <div class="coach-card-header">
+                  <div class="coach-card-title">
+                    <span
+                      class="coach-card-icon"
+                      aria-hidden="true"
+                    >
+                      <svg viewBox="0 0 24 24">
+                        <rect
+                          x="4"
+                          y="13"
+                          width="3"
+                          height="7"
+                          rx="1.5"
+                          fill="currentColor"
+                        />
+                        <rect
+                          x="10.5"
+                          y="8"
+                          width="3"
+                          height="12"
+                          rx="1.5"
+                          fill="currentColor"
+                        />
+                        <rect
+                          x="17"
+                          y="4"
+                          width="3"
+                          height="16"
+                          rx="1.5"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </span>
+
+                    <div>
+                      <span class="section-label">
+                        VENDAS
+                      </span>
+
+                      <h2>
+                        Sales Coach
+                      </h2>
+                    </div>
+                  </div>
+
+                  <button
+                    id="sales-coach-more-button"
+                    class="link-button"
+                    type="button"
+                  >
+                    Ver mais
+                  </button>
+                </div>
+
+                <div
+                  id="sales-coach-preview"
+                  class="coach-preview"
+                >
+                  <div class="coach-empty">
+                    <strong>
+                      Sales Coach ativo
+                    </strong>
+
+                    <p>
+                      Aguardando sinais comerciais relevantes.
+                    </p>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <!-- Comments -->
+          <aside class="comments-card">
+            <div class="comments-card-header">
+              <div>
+                <span class="section-label">
+                  COMUNIDADE
+                </span>
+
+                <h2>
+                  Coment&aacute;rios em tempo real
+                </h2>
+              </div>
+
+              <button
+                id="comments-more-button"
+                class="link-button"
+                type="button"
+              >
+                Ver todos
+              </button>
+            </div>
+
+            <div
+              id="comments-preview"
+              class="comments-preview"
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+            >
+              <div class="comments-empty">
+                <span
+                  class="soft-icon"
+                  aria-hidden="true"
+                >
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M4 5h16v11H9l-5 4V5Z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linejoin="round"
+                    />
+                    <circle
+                      cx="9"
+                      cy="10.5"
+                      r="1"
+                      fill="currentColor"
+                    />
+                    <circle
+                      cx="12"
+                      cy="10.5"
+                      r="1"
+                      fill="currentColor"
+                    />
+                    <circle
+                      cx="15"
+                      cy="10.5"
+                      r="1"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </span>
+
+                <strong>
+                  Aguardando coment&aacute;rios
+                </strong>
+
+                <p>
+                  As mensagens da live aparecer&atilde;o aqui.
+                </p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ===================================================
+           SCREEN 4 - SETTINGS
+           =================================================== -->
+      <section
+        id="screen-settings"
+        class="app-screen screen-settings"
+        data-screen="settings"
+        aria-labelledby="settings-title"
+        hidden
+      >
+        <div class="screen-heading settings-heading">
+          <span class="screen-kicker">
+            AJUSTES
+          </span>
+
+          <h1 id="settings-title">
+            Ajustes da conta
+          </h1>
+
+          <p>
+            Gerencie suas prefer&ecirc;ncias b&aacute;sicas com facilidade.
+          </p>
+        </div>
+
+        <div class="settings-list">
+          <button
+            id="account-settings-button"
+            class="settings-row"
+            type="button"
+            aria-describedby="account-settings-status"
+          >
+            <span
+              class="settings-row-icon"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 24 24">
+                <circle
+                  cx="12"
+                  cy="8"
+                  r="4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                />
+                <path
+                  d="M5 21c.5-5 3-7 7-7s6.5 2 7 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+
+            <span class="settings-row-copy">
+              <strong>
+                Minha conta
+              </strong>
+
+              <span id="account-settings-status">
+                Autentica&ccedil;&atilde;o ainda n&atilde;o configurada.
+              </span>
+            </span>
+
+            <span class="settings-row-meta">
+              Em breve
+            </span>
+
+            <span
+              class="row-chevron"
+              aria-hidden="true"
+            >
+              &rsaquo;
+            </span>
+          </button>
+
+          <button
+            id="theme-settings-button"
+            class="settings-row"
+            type="button"
+          >
+            <span
+              class="settings-row-icon"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 24 24">
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="4"
+                  fill="currentColor"
+                />
+                <path
+                  d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+
+            <span class="settings-row-copy">
+              <strong>
+                Tema
+              </strong>
+
+              <span>
+                Apar&ecirc;ncia do aplicativo.
+              </span>
+            </span>
+
+            <span
+              id="current-theme-label"
+              class="settings-row-meta settings-row-meta-blue"
+            >
+              Claro
+            </span>
+
+            <span
+              class="row-chevron"
+              aria-hidden="true"
+            >
+              &rsaquo;
+            </span>
+          </button>
+
+          <button
+            id="help-settings-button"
+            class="settings-row"
+            type="button"
+          >
+            <span
+              class="settings-row-icon"
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 24 24">
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                />
+                <path
+                  d="M9.8 9a2.3 2.3 0 1 1 3.4 2c-.9.5-1.2 1-1.2 2M12 17h.01"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </span>
+
+            <span class="settings-row-copy">
+              <strong>
+                Ajuda
+              </strong>
+
+              <span>
+                Central de ajuda e suporte.
+              </span>
+            </span>
+
+            <span
+              class="row-chevron"
+              aria-hidden="true"
+            >
+              &rsaquo;
+            </span>
+          </button>
+        </div>
+
+        <div class="settings-version">
+          <span>
+            AGCN Live
+          </span>
+
+          <span id="app-version">
+            Interface V9
+          </span>
+        </div>
+      </section>
     </main>
+
+    <!-- =====================================================
+         MOBILE BOTTOM NAV
+         ===================================================== -->
+    <nav
+      id="bottom-nav"
+      class="bottom-nav"
+      aria-label="Navegacao principal"
+    >
+      <button
+        class="bottom-nav-item is-active"
+        type="button"
+        data-route="home"
+        aria-current="page"
+      >
+        <span
+          class="bottom-nav-icon"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3v-9.5Z"
+              fill="currentColor"
+            />
+          </svg>
+        </span>
+
+        <span>
+          In&iacute;cio
+        </span>
+
+        <span
+          class="bottom-nav-indicator"
+          aria-hidden="true"
+        ></span>
+      </button>
+
+      <button
+        class="bottom-nav-item"
+        type="button"
+        data-route="configure"
+      >
+        <span
+          class="bottom-nav-icon"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M12 8.5A3.5 3.5 0 1 0 12 15.5 3.5 3.5 0 0 0 12 8.5Z"
+              fill="currentColor"
+            />
+            <path
+              d="m19.4 13.5 2-1.5-2-1.5.2-2.4-2.5-.4-1.1-2.2-2.2 1.1L12 5l-1.8 1.6L8 5.5 6.9 7.7l-2.5.4.2 2.4-2 1.5 2 1.5-.2 2.4 2.5.4L8 18.5l2.2-1.1L12 19l1.8-1.6 2.2 1.1 1.1-2.2 2.5-.4-.2-2.4Z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.1"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+
+        <span>
+          Configurar
+        </span>
+
+        <span
+          class="bottom-nav-indicator"
+          aria-hidden="true"
+        ></span>
+      </button>
+
+      <button
+        class="bottom-nav-item"
+        type="button"
+        data-route="monitor"
+      >
+        <span
+          class="bottom-nav-icon"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 24 24">
+            <rect
+              x="4"
+              y="13"
+              width="3"
+              height="7"
+              rx="1.5"
+              fill="currentColor"
+            />
+            <rect
+              x="10.5"
+              y="8"
+              width="3"
+              height="12"
+              rx="1.5"
+              fill="currentColor"
+            />
+            <rect
+              x="17"
+              y="4"
+              width="3"
+              height="16"
+              rx="1.5"
+              fill="currentColor"
+            />
+          </svg>
+        </span>
+
+        <span>
+          Monitorar
+        </span>
+
+        <span
+          class="bottom-nav-indicator"
+          aria-hidden="true"
+        ></span>
+      </button>
+
+      <button
+        class="bottom-nav-item"
+        type="button"
+        data-route="settings"
+      >
+        <span
+          class="bottom-nav-icon"
+          aria-hidden="true"
+        >
+          <svg viewBox="0 0 24 24">
+            <path
+              d="M4 6h10M18 6h2M4 12h3M11 12h9M4 18h7M15 18h5"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+            />
+            <circle
+              cx="16"
+              cy="6"
+              r="2"
+              fill="currentColor"
+            />
+            <circle
+              cx="9"
+              cy="12"
+              r="2"
+              fill="currentColor"
+            />
+            <circle
+              cx="13"
+              cy="18"
+              r="2"
+              fill="currentColor"
+            />
+          </svg>
+        </span>
+
+        <span>
+          Ajustes
+        </span>
+
+        <span
+          class="bottom-nav-indicator"
+          aria-hidden="true"
+        ></span>
+      </button>
+    </nav>
+
+    <!-- =====================================================
+         DIALOG - HISTORY
+         ===================================================== -->
+    <dialog
+      id="history-dialog"
+      class="app-dialog"
+    >
+      <div class="dialog-shell">
+        <div class="dialog-header">
+          <div>
+            <span class="section-label">
+              HIST&Oacute;RICO
+            </span>
+
+            <h2>
+              Lives anteriores
+            </h2>
+          </div>
+
+          <button
+            class="dialog-close-button"
+            type="button"
+            data-close-dialog="history-dialog"
+            aria-label="Fechar historico"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div
+          id="history-list"
+          class="history-list"
+        >
+          <div class="dialog-empty">
+            Nenhuma live registrada ainda.
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         DIALOG - LIVE COACH
+         ===================================================== -->
+    <dialog
+      id="live-coach-dialog"
+      class="app-dialog"
+    >
+      <div class="dialog-shell">
+        <div class="dialog-header">
+          <div>
+            <span class="section-label">
+              LIVE COACH
+            </span>
+
+            <h2>
+              Orienta&ccedil;&otilde;es recentes
+            </h2>
+          </div>
+
+          <button
+            class="dialog-close-button"
+            type="button"
+            data-close-dialog="live-coach-dialog"
+            aria-label="Fechar orientacoes"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div
+          id="live-coach-dialog-list"
+          class="dialog-list"
+        >
+          <div class="dialog-empty">
+            Nenhuma orienta&ccedil;&atilde;o dispon&iacute;vel.
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         DIALOG - SALES COACH
+         ===================================================== -->
+    <dialog
+      id="sales-coach-dialog"
+      class="app-dialog"
+    >
+      <div class="dialog-shell">
+        <div class="dialog-header">
+          <div>
+            <span class="section-label">
+              SALES COACH
+            </span>
+
+            <h2>
+              Orienta&ccedil;&otilde;es comerciais
+            </h2>
+          </div>
+
+          <button
+            class="dialog-close-button"
+            type="button"
+            data-close-dialog="sales-coach-dialog"
+            aria-label="Fechar orientacoes comerciais"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div
+          id="sales-coach-dialog-list"
+          class="dialog-list"
+        >
+          <div class="dialog-empty">
+            Nenhuma orienta&ccedil;&atilde;o dispon&iacute;vel.
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         DIALOG - COMMENTS
+         ===================================================== -->
+    <dialog
+      id="comments-dialog"
+      class="app-dialog"
+    >
+      <div class="dialog-shell">
+        <div class="dialog-header">
+          <div>
+            <span class="section-label">
+              COMUNIDADE
+            </span>
+
+            <h2>
+              Coment&aacute;rios
+            </h2>
+          </div>
+
+          <button
+            class="dialog-close-button"
+            type="button"
+            data-close-dialog="comments-dialog"
+            aria-label="Fechar comentarios"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div
+          id="comments-dialog-list"
+          class="dialog-list comments-dialog-list"
+        >
+          <div class="dialog-empty">
+            Nenhum coment&aacute;rio dispon&iacute;vel.
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         DIALOG - THEME
+         ===================================================== -->
+    <dialog
+      id="theme-dialog"
+      class="app-dialog"
+    >
+      <div class="dialog-shell dialog-shell-small">
+        <div class="dialog-header">
+          <div>
+            <span class="section-label">
+              APAR&Ecirc;NCIA
+            </span>
+
+            <h2>
+              Tema
+            </h2>
+          </div>
+
+          <button
+            class="dialog-close-button"
+            type="button"
+            data-close-dialog="theme-dialog"
+            aria-label="Fechar tema"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div
+          id="theme-options"
+          class="theme-options"
+        >
+          <label class="theme-option">
+            <input
+              type="radio"
+              name="theme"
+              value="light"
+              checked
+            >
+
+            <span>
+              <strong>
+                Claro
+              </strong>
+
+              <small>
+                Fundo claro e alto contraste.
+              </small>
+            </span>
+          </label>
+
+          <label class="theme-option">
+            <input
+              type="radio"
+              name="theme"
+              value="dark"
+            >
+
+            <span>
+              <strong>
+                Escuro
+              </strong>
+
+              <small>
+                Interface escura.
+              </small>
+            </span>
+          </label>
+
+          <label class="theme-option">
+            <input
+              type="radio"
+              name="theme"
+              value="system"
+            >
+
+            <span>
+              <strong>
+                Sistema
+              </strong>
+
+              <small>
+                Segue a prefer&ecirc;ncia do aparelho.
+              </small>
+            </span>
+          </label>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         DIALOG - HELP
+         ===================================================== -->
+    <dialog
+      id="help-dialog"
+      class="app-dialog"
+    >
+      <div class="dialog-shell">
+        <div class="dialog-header">
+          <div>
+            <span class="section-label">
+              SUPORTE
+            </span>
+
+            <h2>
+              Ajuda
+            </h2>
+          </div>
+
+          <button
+            class="dialog-close-button"
+            type="button"
+            data-close-dialog="help-dialog"
+            aria-label="Fechar ajuda"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div class="help-content">
+          <article>
+            <h3>
+              Como conectar uma live?
+            </h3>
+
+            <p>
+              Abra Configurar, escolha Shopee ou TikTok, informe o link
+              ou @username e toque em Ativar live.
+            </p>
+          </article>
+
+          <article>
+            <h3>
+              O AGCN Live transmite v&iacute;deo?
+            </h3>
+
+            <p>
+              N&atilde;o. O AGCN Live monitora dados, sinais, coment&aacute;rios
+              e orienta&ccedil;&otilde;es. Ele n&atilde;o reproduz a transmiss&atilde;o.
+            </p>
+          </article>
+
+          <article>
+            <h3>
+              Como funciona o Sales Coach?
+            </h3>
+
+            <p>
+              Ative o recurso em Configurar e informe os dados confirmados
+              do produto. O sistema usa esses dados junto aos coment&aacute;rios
+              reais da live para orientar o vendedor.
+            </p>
+          </article>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- =====================================================
+         GLOBAL TOAST
+         ===================================================== -->
+    <div
+      id="app-toast"
+      class="app-toast hidden"
+      role="status"
+      aria-live="polite"
+    ></div>
   </div>
 </body>
 </html>
