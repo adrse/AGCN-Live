@@ -1,7 +1,10 @@
-"""AGCN LIVE: one-page HTTP/SSE host for the preserved notebook runtime.
+"""AGCN LIVE / ALIVE HTTP + SSE server.
 
-Run with `python -m backend.server`. The same process serves the frontend and
-the Python capture modules; no browser executes a Worker or consumes a queue.
+This server keeps the current frontend compatible while exposing
+Product Context V1 and Sales Coach V2 endpoints.
+
+Run:
+    python -m backend.server
 """
 
 from __future__ import annotations
@@ -14,18 +17,66 @@ import secrets
 import threading
 import time
 import traceback
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import (
+    BaseHTTPRequestHandler,
+    ThreadingHTTPServer,
+)
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import (
+    parse_qs,
+    urlparse,
+)
 
-from .runtime import MissingCaptureDependency, load_runtime
+from .runtime import (
+    MissingCaptureDependency,
+    load_runtime,
+)
 
-DIST = Path(__file__).resolve().parents[1] / "dist"
-MAX_SESSIONS = int(os.environ.get("AGCN_MAX_SESSIONS", "8"))
-ALLOWED_ORIGINS = {x.strip().rstrip("/") for x in os.environ.get("AGCN_ALLOWED_ORIGINS", "").split(",") if x.strip()}
+
+DIST = (
+    Path(__file__)
+    .resolve()
+    .parents[1]
+    / "dist"
+)
+
+MAX_SESSIONS = int(
+    os.environ.get(
+        "AGCN_MAX_SESSIONS",
+        "8",
+    )
+)
+
+SESSION_TTL_SECONDS = int(
+    os.environ.get(
+        "AGCN_SESSION_TTL_SECONDS",
+        "3600",
+    )
+)
+
+MAX_REQUEST_BYTES = int(
+    os.environ.get(
+        "AGCN_MAX_REQUEST_BYTES",
+        "65536",
+    )
+)
+
+ALLOWED_ORIGINS = {
+    value.strip().rstrip("/")
+    for value in os.environ.get(
+        "AGCN_ALLOWED_ORIGINS",
+        "",
+    ).split(",")
+    if value.strip()
+}
+
 _sessions = {}
 _registry_lock = threading.Lock()
 
+
+# ============================================================
+# SESSION
+# ============================================================
 
 class Session:
     def __init__(self):
@@ -34,184 +85,1015 @@ class Session:
         self.touched = time.monotonic()
 
 
-def _session(identifier, create=True):
+def _cleanup_stale_sessions():
+    now = time.monotonic()
+
+    for sid, old in list(
+        _sessions.items()
+    ):
+        if (
+            now - old.touched
+            <= SESSION_TTL_SECONDS
+        ):
+            continue
+
+        try:
+            old.runtime.stop()
+        except Exception:
+            pass
+
+        _sessions.pop(
+            sid,
+            None,
+        )
+
+
+def _session(
+    identifier,
+    create=True,
+):
     with _registry_lock:
-        session = _sessions.get(identifier) if identifier else None
+        session = (
+            _sessions.get(
+                identifier
+            )
+            if identifier
+            else None
+        )
+
         if session:
-            session.touched = time.monotonic()
-            return identifier, session
+            session.touched = (
+                time.monotonic()
+            )
+            return (
+                identifier,
+                session,
+            )
+
         if not create:
-            return None, None
-        # A stale session no longer holds a Chromium process indefinitely.
-        for sid, old in list(_sessions.items()):
-            if time.monotonic() - old.touched > 60 * 60:
-                old.runtime.stop()
-                del _sessions[sid]
-        if len(_sessions) >= MAX_SESSIONS:
-            raise ValueError("Limite de sessões simultâneas atingido. Tente novamente em alguns minutos.")
-        identifier = secrets.token_urlsafe(24)
+            return (
+                None,
+                None,
+            )
+
+        _cleanup_stale_sessions()
+
+        if (
+            len(_sessions)
+            >= MAX_SESSIONS
+        ):
+            raise ValueError(
+                "Limite de sessoes simultaneas atingido. "
+                "Tente novamente em alguns minutos."
+            )
+
+        identifier = (
+            secrets.token_urlsafe(
+                24
+            )
+        )
+
         session = Session()
-        _sessions[identifier] = session
-        return identifier, session
+
+        _sessions[
+            identifier
+        ] = session
+
+        return (
+            identifier,
+            session,
+        )
 
 
-class Handler(BaseHTTPRequestHandler):
-    server_version = "AGCNLive/1.0"
+# ============================================================
+# HTTP HANDLER
+# ============================================================
 
-    def log_message(self, fmt, *args):
-        # Internal diagnostics stay off the user-facing page.
-        entry = re.sub(r"sid=[A-Za-z0-9_-]+", "sid=[redacted]", fmt % args)
-        print(f"[http] {self.address_string()} {entry}", flush=True)
+class Handler(
+    BaseHTTPRequestHandler
+):
+    server_version = (
+        "AGCNLive/2.0"
+    )
+
+    # --------------------------------------------------------
+    # LOG
+    # --------------------------------------------------------
+
+    def log_message(
+        self,
+        fmt,
+        *args,
+    ):
+        entry = re.sub(
+            r"sid=[A-Za-z0-9_-]+",
+            "sid=[redacted]",
+            fmt % args,
+        )
+
+        print(
+            f"[http] "
+            f"{self.address_string()} "
+            f"{entry}",
+            flush=True,
+        )
+
+    # --------------------------------------------------------
+    # ORIGIN / HEADERS
+    # --------------------------------------------------------
 
     def _origin(self):
-        origin = self.headers.get("Origin", "").rstrip("/")
+        origin = (
+            self.headers.get(
+                "Origin",
+                "",
+            )
+            .rstrip("/")
+        )
+
         if not origin:
             return ""
-        hostname = self.headers.get("Host", "")
-        if origin in {f"http://{hostname}", f"https://{hostname}"} or origin in ALLOWED_ORIGINS:
+
+        hostname = (
+            self.headers.get(
+                "Host",
+                "",
+            )
+        )
+
+        same_origin = {
+            f"http://{hostname}",
+            f"https://{hostname}",
+        }
+
+        if (
+            origin in same_origin
+            or origin
+            in ALLOWED_ORIGINS
+        ):
             return origin
+
         return None
 
-    def _headers(self, code=200, content_type="application/json; charset=utf-8", session_id=None):
-        self.send_response(code)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Frame-Options", "DENY")
+    def _headers(
+        self,
+        code=200,
+        content_type=(
+            "application/json; "
+            "charset=utf-8"
+        ),
+        session_id=None,
+    ):
+        self.send_response(
+            code
+        )
+
+        self.send_header(
+            "Content-Type",
+            content_type,
+        )
+
+        self.send_header(
+            "Cache-Control",
+            "no-store",
+        )
+
+        self.send_header(
+            "X-Content-Type-Options",
+            "nosniff",
+        )
+
+        self.send_header(
+            "Referrer-Policy",
+            "no-referrer",
+        )
+
+        self.send_header(
+            "X-Frame-Options",
+            "DENY",
+        )
+
         origin = self._origin()
+
         if origin:
-            self.send_header("Access-Control-Allow-Origin", origin)
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-AGCN-Session")
-            self.send_header("Access-Control-Expose-Headers", "X-AGCN-Session")
-            self.send_header("Vary", "Origin")
+            self.send_header(
+                "Access-Control-Allow-Origin",
+                origin,
+            )
+
+            self.send_header(
+                "Access-Control-Allow-Methods",
+                "GET, POST, OPTIONS",
+            )
+
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                (
+                    "Content-Type, "
+                    "X-AGCN-Session"
+                ),
+            )
+
+            self.send_header(
+                "Access-Control-Expose-Headers",
+                "X-AGCN-Session",
+            )
+
+            self.send_header(
+                "Vary",
+                "Origin",
+            )
+
         if session_id:
-            self.send_header("X-AGCN-Session", session_id)
+            self.send_header(
+                "X-AGCN-Session",
+                session_id,
+            )
+
         self.end_headers()
 
-    def _json(self, obj, code=200, session_id=None):
-        encoded = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
-        self._headers(code, session_id=session_id)
-        self.wfile.write(encoded)
+    def _json(
+        self,
+        obj,
+        code=200,
+        session_id=None,
+    ):
+        encoded = json.dumps(
+            obj,
+            ensure_ascii=False,
+            default=str,
+        ).encode(
+            "utf-8"
+        )
 
-    def _sid(self, url):
-        return self.headers.get("X-AGCN-Session") or parse_qs(url.query).get("sid", [None])[0]
+        self._headers(
+            code,
+            session_id=session_id,
+        )
+
+        self.wfile.write(
+            encoded
+        )
+
+    # --------------------------------------------------------
+    # SESSION ID
+    # --------------------------------------------------------
+
+    def _sid(
+        self,
+        url,
+    ):
+        return (
+            self.headers.get(
+                "X-AGCN-Session"
+            )
+            or parse_qs(
+                url.query
+            ).get(
+                "sid",
+                [None],
+            )[0]
+        )
+
+    # --------------------------------------------------------
+    # JSON BODY
+    # --------------------------------------------------------
+
+    def _read_json_body(self):
+        try:
+            length = int(
+                self.headers.get(
+                    "Content-Length",
+                    "0",
+                )
+            )
+        except ValueError:
+            raise ValueError(
+                "Content-Length invalido."
+            ) from None
+
+        if length <= 0:
+            raise ValueError(
+                "Requisicao vazia."
+            )
+
+        if (
+            length
+            > MAX_REQUEST_BYTES
+        ):
+            raise ValueError(
+                "Requisicao muito grande."
+            )
+
+        raw = self.rfile.read(
+            length
+        )
+
+        try:
+            data = json.loads(
+                raw
+            )
+        except json.JSONDecodeError:
+            raise ValueError(
+                "JSON invalido."
+            ) from None
+
+        if not isinstance(
+            data,
+            dict,
+        ):
+            raise ValueError(
+                "Envie um objeto JSON."
+            )
+
+        return data
+
+    # --------------------------------------------------------
+    # OPTIONS
+    # --------------------------------------------------------
 
     def do_OPTIONS(self):
         if self._origin() is None:
-            self._json({"ok": False, "message": "Origem não autorizada."}, 403)
+            self._json(
+                {
+                    "ok": False,
+                    "message":
+                        "Origem nao autorizada.",
+                },
+                403,
+            )
             return
-        self._headers(204)
+
+        self._headers(
+            204
+        )
+
+    # --------------------------------------------------------
+    # GET
+    # --------------------------------------------------------
 
     def do_GET(self):
-        url = urlparse(self.path)
-        if url.path.startswith("/api/") and self._origin() is None:
-            self._json({"ok": False, "message": "Origem não autorizada."}, 403)
+        url = urlparse(
+            self.path
+        )
+
+        if (
+            url.path.startswith(
+                "/api/"
+            )
+            and self._origin()
+            is None
+        ):
+            self._json(
+                {
+                    "ok": False,
+                    "message":
+                        "Origem nao autorizada.",
+                },
+                403,
+            )
             return
+
+        # ----------------------------------------------------
+        # HEALTH
+        # ----------------------------------------------------
+
         if url.path == "/api/health":
-            self._json({"ok": True, "name": "AGCN LIVE", "transport": "sse"})
+            self._json({
+                "ok": True,
+                "name": "AGCN LIVE",
+                "runtime": "v2",
+                "transport": "sse",
+                "sales_coach": "v2",
+                "product_context": "v1",
+            })
             return
+
+        # ----------------------------------------------------
+        # FULL STATE
+        # Creates a session when necessary.
+        # ----------------------------------------------------
+
         if url.path == "/api/state":
             try:
-                sid, session = _session(self._sid(url))
+                sid, session = (
+                    _session(
+                        self._sid(
+                            url
+                        )
+                    )
+                )
+
                 with session.lock:
-                    state = session.runtime.status()
-                self._json(state, session_id=sid)
+                    state = (
+                        session.runtime.status()
+                    )
+
+                self._json(
+                    state,
+                    session_id=sid,
+                )
+
             except Exception as exc:
-                self._error(exc)
+                self._error(
+                    exc
+                )
+
             return
+
+        # ----------------------------------------------------
+        # PRODUCT CONTEXT
+        # Convenient endpoint for Interface V9.
+        # Also creates session when necessary.
+        # ----------------------------------------------------
+
+        if (
+            url.path
+            == "/api/product-context"
+        ):
+            try:
+                sid, session = (
+                    _session(
+                        self._sid(
+                            url
+                        )
+                    )
+                )
+
+                with session.lock:
+                    product_context = (
+                        session.runtime
+                        .product_context_state()
+                    )
+
+                self._json(
+                    {
+                        "ok": True,
+                        "product_context":
+                            product_context,
+                    },
+                    session_id=sid,
+                )
+
+            except Exception as exc:
+                self._error(
+                    exc
+                )
+
+            return
+
+        # ----------------------------------------------------
+        # SSE
+        # ----------------------------------------------------
+
         if url.path == "/api/events":
-            sid, session = _session(self._sid(url), create=False)
+            sid, session = _session(
+                self._sid(
+                    url
+                ),
+                create=False,
+            )
+
             if not session:
-                self._json({"ok": False, "message": "Sessão expirada. Atualize a página."}, 401)
+                self._json(
+                    {
+                        "ok": False,
+                        "message":
+                            "Sessao expirada. "
+                            "Atualize a pagina.",
+                    },
+                    401,
+                )
                 return
-            self._headers(200, "text/event-stream; charset=utf-8", session_id=sid)
+
+            self._headers(
+                200,
+                (
+                    "text/event-stream; "
+                    "charset=utf-8"
+                ),
+                session_id=sid,
+            )
+
             try:
                 while True:
-                    session.touched = time.monotonic()
+                    session.touched = (
+                        time.monotonic()
+                    )
+
                     with session.lock:
-                        state = session.runtime.status()
-                    event = json.dumps(state, ensure_ascii=False, default=str)
-                    self.wfile.write(f"event: state\ndata: {event}\n\n".encode("utf-8"))
+                        state = (
+                            session.runtime.status()
+                        )
+
+                    event = json.dumps(
+                        state,
+                        ensure_ascii=False,
+                        default=str,
+                    )
+
+                    self.wfile.write(
+                        (
+                            "event: state\n"
+                            f"data: {event}\n\n"
+                        ).encode(
+                            "utf-8"
+                        )
+                    )
+
                     self.wfile.flush()
-                    time.sleep(1)
-            except (BrokenPipeError, ConnectionResetError):
+
+                    time.sleep(
+                        1
+                    )
+
+            except (
+                BrokenPipeError,
+                ConnectionResetError,
+            ):
                 return
+
             return
-        path = (DIST / url.path.lstrip("/")).resolve() if url.path != "/" else DIST / "index.html"
-        if DIST not in path.parents or not path.is_file():
-            self._json({"ok": False, "message": "Página não encontrada."}, 404)
+
+        # ----------------------------------------------------
+        # STATIC FRONTEND
+        # ----------------------------------------------------
+
+        path = (
+            (
+                DIST
+                / url.path.lstrip("/")
+            ).resolve()
+            if url.path != "/"
+            else (
+                DIST
+                / "index.html"
+            )
+        )
+
+        if (
+            DIST not in path.parents
+            or not path.is_file()
+        ):
+            self._json(
+                {
+                    "ok": False,
+                    "message":
+                        "Pagina nao encontrada.",
+                },
+                404,
+            )
             return
+
         data = path.read_bytes()
-        self._headers(200, mimetypes.guess_type(path.name)[0] or "application/octet-stream")
-        self.wfile.write(data)
+
+        self._headers(
+            200,
+            (
+                mimetypes.guess_type(
+                    path.name
+                )[0]
+                or "application/octet-stream"
+            ),
+        )
+
+        self.wfile.write(
+            data
+        )
+
+    # --------------------------------------------------------
+    # POST
+    # --------------------------------------------------------
 
     def do_POST(self):
-        url = urlparse(self.path)
-        if self._origin() is None:
-            self._json({"ok": False, "message": "Origem não autorizada."}, 403)
-            return
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length > 32_768 or length <= 0:
-                raise ValueError("Requisição vazia ou muito grande.")
-            data = json.loads(self.rfile.read(length))
-            if not isinstance(data, dict):
-                raise ValueError("Envie um objeto JSON.")
-            sid, session = _session(self._sid(url), create=False)
-            if not session:
-                raise ValueError("Sessão expirada. Atualize a página.")
-            with session.lock:
-                result = self._command(session.runtime, url.path, data)
-                state = session.runtime.status()
-            self._json({"ok": result.get("ok", True), "result": result, "state": state}, session_id=sid)
-        except MissingCaptureDependency as exc:
-            self._json({"ok": False, "message": str(exc)}, 503)
-        except (ValueError, TypeError, KeyError) as exc:
-            self._json({"ok": False, "message": str(exc)}, 400)
-        except Exception as exc:
-            self._error(exc)
+        url = urlparse(
+            self.path
+        )
 
-    def _command(self, runtime, path, data):
+        if self._origin() is None:
+            self._json(
+                {
+                    "ok": False,
+                    "message":
+                        "Origem nao autorizada.",
+                },
+                403,
+            )
+            return
+
+        try:
+            data = (
+                self._read_json_body()
+            )
+
+            sid, session = (
+                _session(
+                    self._sid(
+                        url
+                    ),
+                    create=False,
+                )
+            )
+
+            if not session:
+                raise ValueError(
+                    "Sessao expirada. "
+                    "Atualize a pagina."
+                )
+
+            session.touched = (
+                time.monotonic()
+            )
+
+            with session.lock:
+                result = self._command(
+                    session.runtime,
+                    url.path,
+                    data,
+                )
+
+                state = (
+                    session.runtime.status()
+                )
+
+            self._json(
+                {
+                    "ok":
+                        result.get(
+                            "ok",
+                            True,
+                        ),
+                    "result":
+                        result,
+                    "state":
+                        state,
+                },
+                session_id=sid,
+            )
+
+        except MissingCaptureDependency as exc:
+            self._json(
+                {
+                    "ok": False,
+                    "message":
+                        str(exc),
+                },
+                503,
+            )
+
+        except (
+            ValueError,
+            TypeError,
+            KeyError,
+        ) as exc:
+            self._json(
+                {
+                    "ok": False,
+                    "message":
+                        str(exc),
+                },
+                400,
+            )
+
+        except Exception as exc:
+            self._error(
+                exc
+            )
+
+    # --------------------------------------------------------
+    # COMMAND ROUTER
+    # --------------------------------------------------------
+
+    def _command(
+        self,
+        runtime,
+        path,
+        data,
+    ):
+        # ====================================================
+        # LIVE
+        # ====================================================
+
         if path == "/api/start":
-            facts = data.get("facts") or {}
-            if not isinstance(facts, dict):
-                raise ValueError("Os fatos estruturados devem formar um objeto JSON.")
-            platform = data.get("platform")
-            return runtime.start(platform, data.get("value"), price=str(data.get("price") or "")[:100], info=str(data.get("info") or "")[:4000], facts=facts, style=data.get("style", "equilibrado"))
+            facts = (
+                data.get(
+                    "facts"
+                )
+                or {}
+            )
+
+            if not isinstance(
+                facts,
+                dict,
+            ):
+                raise ValueError(
+                    "Os fatos estruturados "
+                    "devem formar um objeto JSON."
+                )
+
+            platform = (
+                data.get(
+                    "platform"
+                )
+            )
+
+            return runtime.start(
+                platform,
+                data.get(
+                    "value"
+                ),
+                price=str(
+                    data.get(
+                        "price"
+                    )
+                    or ""
+                )[:100],
+                info=str(
+                    data.get(
+                        "info"
+                    )
+                    or ""
+                )[:4000],
+                facts=facts,
+                style=data.get(
+                    "style"
+                ),
+            )
+
         if path == "/api/stop":
             return runtime.stop()
+
+        # ====================================================
+        # LIVE COACH
+        # ====================================================
+
         if path == "/api/alert-mode":
-            return runtime.alert_mode(data.get("mode"))
+            return runtime.alert_mode(
+                data.get(
+                    "mode"
+                )
+            )
+
+        # ====================================================
+        # PRODUCT CONTEXT V1
+        #
+        # POST /api/product-context
+        #
+        # Accepted fields:
+        # name
+        # regular_price
+        # current_price
+        # discount
+        # description
+        # additional_info
+        # mode
+        #
+        # replace defaults to False so partial edits do not
+        # erase fields that were not sent.
+        # ====================================================
+
+        if (
+            path
+            == "/api/product-context"
+        ):
+            product = (
+                data.get(
+                    "product"
+                )
+                if isinstance(
+                    data.get(
+                        "product"
+                    ),
+                    dict,
+                )
+                else data
+            )
+
+            allowed = {
+                "name",
+                "regular_price",
+                "current_price",
+                "discount",
+                "description",
+                "additional_info",
+                "mode",
+            }
+
+            payload = {
+                key: value
+                for key, value
+                in product.items()
+                if key in allowed
+            }
+
+            replace = bool(
+                data.get(
+                    "replace",
+                    False,
+                )
+            )
+
+            return (
+                runtime
+                .product_context_update(
+                    payload,
+                    replace=replace,
+                )
+            )
+
+        # ====================================================
+        # ACTIVATE SALES COACH
+        # ====================================================
+
+        if (
+            path
+            == "/api/product-context/activate"
+        ):
+            return (
+                runtime
+                .product_context_activate(
+                    mode=data.get(
+                        "mode"
+                    )
+                )
+            )
+
+        # ====================================================
+        # DEACTIVATE SALES COACH
+        #
+        # Product remains configured.
+        # ====================================================
+
+        if (
+            path
+            == "/api/product-context/deactivate"
+        ):
+            return (
+                runtime
+                .product_context_deactivate()
+            )
+
+        # ====================================================
+        # CLEAR PRODUCT
+        # ====================================================
+
+        if (
+            path
+            == "/api/product-context/clear"
+        ):
+            return (
+                runtime
+                .product_context_clear()
+            )
+
+        # ====================================================
+        # SALES MODE: leve / maximo
+        # ====================================================
+
+        if path == "/api/sales-mode":
+            return runtime.sales_mode(
+                data.get(
+                    "mode"
+                )
+            )
+
+        # ====================================================
+        # LEGACY COMPATIBILITY
+        #
+        # Current frontend still calls these routes.
+        # They remain temporarily until Interface V9 replaces
+        # the old Sales Coach controls.
+        # ====================================================
+
         if path == "/api/sales-style":
-            return runtime.sales_style(data.get("style"))
+            value = (
+                data.get(
+                    "mode"
+                )
+                or data.get(
+                    "style"
+                )
+            )
+
+            return runtime.sales_style(
+                value
+            )
+
         if path == "/api/product-info":
-            facts = data.get("facts") or {}
-            if not isinstance(facts, dict):
-                raise ValueError("Os fatos estruturados devem formar um objeto JSON.")
-            return runtime.product_info(price=str(data.get("price") or "")[:100], info=str(data.get("info") or "")[:4000], facts=facts)
+            facts = (
+                data.get(
+                    "facts"
+                )
+                or {}
+            )
+
+            if not isinstance(
+                facts,
+                dict,
+            ):
+                raise ValueError(
+                    "Os fatos estruturados "
+                    "devem formar um objeto JSON."
+                )
+
+            return runtime.product_info(
+                price=str(
+                    data.get(
+                        "price"
+                    )
+                    or ""
+                )[:100],
+                info=str(
+                    data.get(
+                        "info"
+                    )
+                    or ""
+                )[:4000],
+                facts=facts,
+            )
+
         if path == "/api/product-link":
-            return runtime.product_link(data.get("url"))
-        raise ValueError("Comando desconhecido.")
+            return runtime.product_link(
+                data.get(
+                    "url"
+                )
+            )
 
-    def _error(self, exc):
+        raise ValueError(
+            "Comando desconhecido."
+        )
+
+    # --------------------------------------------------------
+    # INTERNAL ERROR
+    # --------------------------------------------------------
+
+    def _error(
+        self,
+        exc,
+    ):
         traceback.print_exc()
-        self._json({"ok": False, "message": f"Erro interno: {type(exc).__name__}."}, 500)
 
+        self._json(
+            {
+                "ok": False,
+                "message": (
+                    "Erro interno: "
+                    f"{type(exc).__name__}."
+                ),
+            },
+            500,
+        )
+
+
+# ============================================================
+# MAIN
+# ============================================================
 
 def main():
-    port = int(os.environ.get("PORT", "8000"))
-    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    port = int(
+        os.environ.get(
+            "PORT",
+            "8000",
+        )
+    )
+
+    server = (
+        ThreadingHTTPServer(
+            (
+                "0.0.0.0",
+                port,
+            ),
+            Handler,
+        )
+    )
+
     server.daemon_threads = True
-    print(f"AGCN LIVE disponível na porta {port}.", flush=True)
+
+    print(
+        (
+            "AGCN LIVE disponivel "
+            f"na porta {port}."
+        ),
+        flush=True,
+    )
+
     try:
-        server.serve_forever(poll_interval=0.5)
+        server.serve_forever(
+            poll_interval=0.5
+        )
+
     except KeyboardInterrupt:
         pass
+
     finally:
-        for session in list(_sessions.values()):
-            session.runtime.stop()
+        for session in list(
+            _sessions.values()
+        ):
+            try:
+                session.runtime.stop()
+            except Exception:
+                pass
+
         server.server_close()
 
 
