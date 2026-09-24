@@ -97,7 +97,7 @@ class _Unavailable:
         **kwargs,
     ):
         raise MissingCaptureDependency(
-            "DependÃªncia do capturador ausente: "
+            "Dependencia do capturador ausente: "
             f"{self.name}."
         )
 
@@ -106,7 +106,7 @@ class _Unavailable:
         name,
     ):
         raise MissingCaptureDependency(
-            "DependÃªncia do capturador ausente: "
+            "Dependencia do capturador ausente: "
             f"{self.name}."
         )
 
@@ -242,7 +242,7 @@ def _normalize_sales_mode(value):
         "maximo",
     }:
         raise ValueError(
-            "Modo invÃ¡lido. "
+            "Modo invalido. "
             "Use leve ou maximo."
         )
 
@@ -360,7 +360,7 @@ def validate_input(
             value,
         ):
             raise ValueError(
-                "Informe um @username vÃ¡lido "
+                "Informe um @username valido "
                 "do TikTok."
             )
 
@@ -640,7 +640,7 @@ def load_runtime():
             else:
                 runtime.sales_coach.last_error = (
                     "Canal sales do Comment Dispatcher "
-                    "nÃ£o ficou pronto."
+                    "nao ficou pronto."
                 )
                 return
 
@@ -881,8 +881,8 @@ class NotebookRuntime:
             "agcn_monitorando"
         ]:
             raise ValueError(
-                "JÃ¡ existe um monitoramento "
-                "ativo nesta sessÃ£o."
+                "Ja existe um monitoramento "
+                "ativo nesta sessao."
             )
 
         needed = (
@@ -905,8 +905,8 @@ class NotebookRuntime:
 
         if missing:
             raise MissingCaptureDependency(
-                "DependÃªncias Python ainda "
-                "nÃ£o instaladas neste servidor: "
+                "Dependencias Python ainda "
+                "nao instaladas neste servidor: "
                 + ", ".join(
                     missing
                 )
@@ -992,7 +992,7 @@ class NotebookRuntime:
             return {
                 "ok": True,
                 "message":
-                    "Monitoramento jÃ¡ encerrado.",
+                    "Monitoramento ja encerrado.",
             }
 
         result = self.ns[
@@ -1073,7 +1073,7 @@ class NotebookRuntime:
             dict,
         ):
             raise ValueError(
-                "Dados do produto invÃ¡lidos."
+                "Dados do produto invalidos."
             )
 
         try:
@@ -1257,7 +1257,7 @@ class NotebookRuntime:
         value,
     ):
         raise ValueError(
-            "O Sales Coach V2 nÃ£o usa link do produto. "
+            "O Sales Coach V2 nao usa link do produto. "
             "Cadastre o produto no Product Context."
         )
 
@@ -1354,7 +1354,7 @@ class NotebookRuntime:
                         payload.get(
                             "user"
                         )
-                        or "UsuÃ¡rio"
+                        or "Usuario"
                     ),
                 "text":
                     ns[
