@@ -2,7 +2,7 @@
   "use strict";
 
   // =========================================================
-  // AGCN LIVE - INTERFACE V9.2
+  // AGCN LIVE - INTERFACE V9.3
   // Frontend real para Runtime/Server V2.1.
   // =========================================================
 
@@ -24,6 +24,8 @@
     salesEnabled: "agcn-live-sales-enabled-v1",
     salesMode: "agcn-live-sales-mode-v1",
     liveDraft: "agcn-live-config-v1",
+    audioLive: "agcn-live-audio-live-v1",
+    audioSales: "agcn-live-audio-sales-v1",
   };
 
   const ROUTES = {
@@ -162,6 +164,34 @@
       phase: "idle",
       phaseUntil: 0,
     },
+  };
+
+  // =========================================================
+  // COACH AUDIO
+  //
+  // - Speech Synthesis nativo do navegador.
+  // - Live Coach e Sales Coach podem ser ligados separadamente.
+  // - Uma fila compartilhada evita duas vozes ao mesmo tempo.
+  // - Apenas novas orientacoes sao faladas.
+  // - A fala pode terminar mesmo depois do contador visual zerar.
+  // =========================================================
+
+  const coachAudio = {
+    supported: Boolean(
+      "speechSynthesis" in window
+      && "SpeechSynthesisUtterance" in window
+    ),
+    live: {
+      enabled: false,
+      seen: new Set(),
+    },
+    sales: {
+      enabled: false,
+      seen: new Set(),
+    },
+    queue: [],
+    current: null,
+    voices: [],
   };
 
   // =========================================================
@@ -502,6 +532,828 @@
   function salesToggleEnabled() {
     return Boolean(
       $("sales-coach-toggle")?.checked
+    );
+  }
+
+  // =========================================================
+  // COACH AUDIO HELPERS
+  // =========================================================
+
+  function coachAudioState(
+    channel
+  ) {
+    return (
+      channel === "sales"
+      ? coachAudio.sales
+      : coachAudio.live
+    );
+  }
+
+  function coachAudioStorageKey(
+    channel
+  ) {
+    return (
+      channel === "sales"
+      ? STORAGE.audioSales
+      : STORAGE.audioLive
+    );
+  }
+
+  function coachAudioName(
+    channel
+  ) {
+    return (
+      channel === "sales"
+      ? "Sales Coach"
+      : "Live Coach"
+    );
+  }
+
+  function coachAudioMessageKey(
+    message
+  ) {
+    return coachMessageKey(
+      message,
+      0
+    );
+  }
+
+  function loadCoachVoices() {
+    if (!coachAudio.supported) {
+      coachAudio.voices = [];
+      return;
+    }
+
+    try {
+      coachAudio.voices = (
+        window.speechSynthesis
+          .getVoices()
+          || []
+      );
+    } catch {
+      coachAudio.voices = [];
+    }
+  }
+
+  function preferredCoachVoice() {
+    const voices = (
+      Array.isArray(
+        coachAudio.voices
+      )
+      ? coachAudio.voices
+      : []
+    );
+
+    return (
+      voices.find(
+        (voice) => (
+          String(
+            voice?.lang || ""
+          ).toLowerCase() === "pt-br"
+        )
+      )
+      || voices.find(
+        (voice) => (
+          String(
+            voice?.lang || ""
+          ).toLowerCase().startsWith(
+            "pt"
+          )
+        )
+      )
+      || null
+    );
+  }
+
+  function refreshCoachAudioButton(
+    channel
+  ) {
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    const button = $(
+      channel === "sales"
+      ? "sales-coach-audio-button"
+      : "live-coach-audio-button"
+    );
+
+    if (!button || !audio) {
+      return;
+    }
+
+    const label = (
+      button.querySelector(
+        ".coach-audio-label"
+      )
+    );
+
+    if (!coachAudio.supported) {
+      button.disabled = true;
+
+      button.dataset.active = "false";
+
+      button.setAttribute(
+        "aria-pressed",
+        "false"
+      );
+
+      button.setAttribute(
+        "aria-label",
+        "Audio indisponivel neste navegador"
+      );
+
+      if (label) {
+        label.textContent = (
+          "Audio indisponivel"
+        );
+      }
+
+      return;
+    }
+
+    button.disabled = false;
+
+    button.dataset.active = (
+      audio.enabled
+      ? "true"
+      : "false"
+    );
+
+    button.setAttribute(
+      "aria-pressed",
+      audio.enabled
+      ? "true"
+      : "false"
+    );
+
+    button.setAttribute(
+      "aria-label",
+      (
+        audio.enabled
+        ? "Desativar audio do "
+        : "Ativar audio do "
+      )
+      + coachAudioName(
+          channel
+        )
+    );
+
+    if (label) {
+      label.textContent = (
+        audio.enabled
+        ? "Audio ligado"
+        : "Ativar audio"
+      );
+    }
+  }
+
+  function createCoachAudioButton(
+    channel
+  ) {
+    const button = document.createElement(
+      "button"
+    );
+
+    button.id = (
+      channel === "sales"
+      ? "sales-coach-audio-button"
+      : "live-coach-audio-button"
+    );
+
+    button.className = (
+      "coach-audio-toggle"
+    );
+
+    button.type = "button";
+
+    button.dataset.channel = (
+      channel
+    );
+
+    button.innerHTML = (
+      '<svg class="coach-audio-icon" viewBox="0 0 24 24" aria-hidden="true">'
+      + '<path d="M5 9v6h4l5 4V5L9 9H5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>'
+      + '<path d="M17 9.2c1.3 1.6 1.3 4 0 5.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+      + '<path d="M19.5 6.8c2.8 2.9 2.8 7.5 0 10.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+      + '</svg>'
+      + '<span class="coach-audio-label"></span>'
+    );
+
+    return button;
+  }
+
+  function ensureCoachAudioControls() {
+    [
+      {
+        channel: "live",
+        panelId:
+          "live-coach-panel",
+      },
+      {
+        channel: "sales",
+        panelId:
+          "sales-coach-panel",
+      },
+    ].forEach(
+      ({
+        channel,
+        panelId,
+      }) => {
+        const panel = $(
+          panelId
+        );
+
+        const header = (
+          panel?.querySelector(
+            ".coach-card-header"
+          )
+        );
+
+        if (!header) {
+          return;
+        }
+
+        const buttonId = (
+          channel === "sales"
+          ? "sales-coach-audio-button"
+          : "live-coach-audio-button"
+        );
+
+        if (!$(buttonId)) {
+          header.append(
+            createCoachAudioButton(
+              channel
+            )
+          );
+        }
+
+        refreshCoachAudioButton(
+          channel
+        );
+      }
+    );
+  }
+
+  function removeQueuedCoachAudio(
+    channel
+  ) {
+    coachAudio.queue = (
+      coachAudio.queue.filter(
+        (item) => (
+          item.channel !== channel
+        )
+      )
+    );
+  }
+
+  function continueCoachAudioQueue() {
+    if (!coachAudio.supported) {
+      return;
+    }
+
+    if (coachAudio.current) {
+      return;
+    }
+
+    let next = null;
+
+    while (
+      coachAudio.queue.length
+      && !next
+    ) {
+      const candidate = (
+        coachAudio.queue.shift()
+      );
+
+      if (
+        coachAudioState(
+          candidate.channel
+        )?.enabled
+        || candidate.system
+      ) {
+        next = candidate;
+      }
+    }
+
+    if (!next) {
+      return;
+    }
+
+    const utterance = (
+      new window.SpeechSynthesisUtterance(
+        next.text
+      )
+    );
+
+    const voice = (
+      preferredCoachVoice()
+    );
+
+    utterance.lang = "pt-BR";
+    utterance.rate = 1.03;
+    utterance.pitch = 1;
+
+    if (voice) {
+      utterance.voice = voice;
+    }
+
+    coachAudio.current = {
+      ...next,
+      utterance,
+    };
+
+    const finish = () => {
+      if (
+        coachAudio.current?.utterance
+        === utterance
+      ) {
+        coachAudio.current = null;
+      }
+
+      setTimeout(
+        continueCoachAudioQueue,
+        20
+      );
+    };
+
+    utterance.onend = finish;
+
+    utterance.onerror = (
+      event
+    ) => {
+      const errorName = (
+        String(
+          event?.error || ""
+        )
+      );
+
+      finish();
+
+      if (
+        errorName === "not-allowed"
+        || errorName === "audio-busy"
+      ) {
+        showToast(
+          "Toque novamente no botao de audio para liberar a voz neste navegador."
+        );
+      }
+    };
+
+    try {
+      window.speechSynthesis.resume();
+
+      window.speechSynthesis.speak(
+        utterance
+      );
+    } catch {
+      coachAudio.current = null;
+
+      setTimeout(
+        continueCoachAudioQueue,
+        20
+      );
+    }
+  }
+
+  function enqueueCoachAudioText(
+    channel,
+    text,
+    {
+      key = "",
+      system = false,
+    } = {}
+  ) {
+    if (!coachAudio.supported) {
+      return false;
+    }
+
+    const normalized = (
+      normalizeText(
+        text
+      )
+    );
+
+    if (!normalized) {
+      return false;
+    }
+
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    if (
+      !system
+      && !audio?.enabled
+    ) {
+      return false;
+    }
+
+    if (
+      !system
+      && key
+      && audio.seen.has(
+        key
+      )
+    ) {
+      return false;
+    }
+
+    if (
+      !system
+      && key
+    ) {
+      audio.seen.add(
+        key
+      );
+    }
+
+    coachAudio.queue.push({
+      channel,
+      text: normalized,
+      key,
+      system,
+    });
+
+    if (
+      coachAudio.queue.length
+      > 20
+    ) {
+      coachAudio.queue.splice(
+        0,
+        coachAudio.queue.length
+        - 20
+      );
+    }
+
+    continueCoachAudioQueue();
+
+    return true;
+  }
+
+  function enqueueCoachMessageAudio(
+    channel,
+    message
+  ) {
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    if (
+      !audio?.enabled
+      || !message
+    ) {
+      return;
+    }
+
+    enqueueCoachAudioText(
+      channel,
+      messageText(
+        message
+      ),
+      {
+        key:
+          coachAudioMessageKey(
+            message
+          ),
+      }
+    );
+  }
+
+  function markCoachAudioHistorySeen(
+    channel,
+    messages
+  ) {
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    if (
+      !audio
+      || !Array.isArray(
+        messages
+      )
+    ) {
+      return;
+    }
+
+    messages.forEach(
+      (message) => {
+        if (
+          messageText(
+            message
+          )
+        ) {
+          audio.seen.add(
+            coachAudioMessageKey(
+              message
+            )
+          );
+        }
+      }
+    );
+  }
+
+  function markExistingCoachAudioSeen(
+    channel
+  ) {
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    const presentation = (
+      coachPresentation[
+        channel
+      ]
+    );
+
+    if (!audio) {
+      return;
+    }
+
+    if (
+      presentation?.current
+    ) {
+      audio.seen.add(
+        coachAudioMessageKey(
+          presentation.current
+        )
+      );
+    }
+
+    (
+      presentation?.queue
+      || []
+    ).forEach(
+      (message) => {
+        audio.seen.add(
+          coachAudioMessageKey(
+            message
+          )
+        );
+      }
+    );
+
+    markCoachAudioHistorySeen(
+      channel,
+      (
+        channel === "sales"
+        ? state?.sales_coach?.messages
+        : state?.coach
+      )
+      || []
+    );
+  }
+
+  function stopCoachAudioChannel(
+    channel
+  ) {
+    removeQueuedCoachAudio(
+      channel
+    );
+
+    if (
+      coachAudio.current?.channel
+      !== channel
+    ) {
+      return;
+    }
+
+    coachAudio.current = null;
+
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // Sem acao adicional.
+    }
+
+    setTimeout(
+      continueCoachAudioQueue,
+      30
+    );
+  }
+
+  function resetCoachAudioSession(
+    channel,
+    stopCurrent = false
+  ) {
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    if (audio) {
+      audio.seen.clear();
+    }
+
+    removeQueuedCoachAudio(
+      channel
+    );
+
+    if (stopCurrent) {
+      stopCoachAudioChannel(
+        channel
+      );
+    }
+  }
+
+  function setCoachAudioEnabled(
+    channel,
+    enabled,
+    {
+      announce = true,
+    } = {}
+  ) {
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    if (!audio) {
+      return;
+    }
+
+    if (!coachAudio.supported) {
+      showToast(
+        "O audio dos Coaches nao e suportado neste navegador."
+      );
+
+      refreshCoachAudioButton(
+        channel
+      );
+
+      return;
+    }
+
+    if (enabled) {
+      // Tudo que ja estava na tela/fila antes do toque e considerado antigo.
+      // Assim, ativar o audio nao reproduz backlog.
+      markExistingCoachAudioSeen(
+        channel
+      );
+    }
+
+    audio.enabled = Boolean(
+      enabled
+    );
+
+    storageSet(
+      localStorage,
+      coachAudioStorageKey(
+        channel
+      ),
+      audio.enabled
+      ? "1"
+      : "0"
+    );
+
+    refreshCoachAudioButton(
+      channel
+    );
+
+    if (!audio.enabled) {
+      stopCoachAudioChannel(
+        channel
+      );
+
+      showToast(
+        "Audio do "
+        + coachAudioName(
+            channel
+          )
+        + " desativado."
+      );
+
+      return;
+    }
+
+    try {
+      window.speechSynthesis.resume();
+    } catch {
+      // Alguns navegadores nao precisam de resume.
+    }
+
+    if (announce) {
+      enqueueCoachAudioText(
+        channel,
+        "Audio do "
+        + coachAudioName(
+            channel
+          )
+        + " ativado.",
+        {
+          system: true,
+          key:
+            "audio-enabled:"
+            + channel
+            + ":"
+            + Date.now(),
+        }
+      );
+    }
+
+    showToast(
+      "Audio do "
+      + coachAudioName(
+          channel
+        )
+      + " ativado.",
+      "success"
+    );
+  }
+
+  function toggleCoachAudio(
+    channel
+  ) {
+    const audio = (
+      coachAudioState(
+        channel
+      )
+    );
+
+    if (!audio) {
+      return;
+    }
+
+    setCoachAudioEnabled(
+      channel,
+      !audio.enabled
+    );
+  }
+
+  function hydrateCoachAudioPreferences() {
+    coachAudio.live.enabled = (
+      storageGet(
+        localStorage,
+        STORAGE.audioLive,
+        "0"
+      ) === "1"
+    );
+
+    coachAudio.sales.enabled = (
+      storageGet(
+        localStorage,
+        STORAGE.audioSales,
+        "0"
+      ) === "1"
+    );
+
+    loadCoachVoices();
+
+    if (
+      coachAudio.supported
+      && typeof window.speechSynthesis
+        .addEventListener
+        === "function"
+    ) {
+      window.speechSynthesis.addEventListener(
+        "voiceschanged",
+        loadCoachVoices
+      );
+    }
+
+    refreshCoachAudioButton(
+      "live"
+    );
+
+    refreshCoachAudioButton(
+      "sales"
+    );
+  }
+
+  function bindCoachAudioControls() {
+    [
+      "live",
+      "sales",
+    ].forEach(
+      (channel) => {
+        const button = $(
+          channel === "sales"
+          ? "sales-coach-audio-button"
+          : "live-coach-audio-button"
+        );
+
+        button?.addEventListener(
+          "click",
+          () => {
+            toggleCoachAudio(
+              channel
+            );
+          }
+        );
+      }
     );
   }
 
@@ -2174,6 +3026,19 @@
       return;
     }
 
+    const hadActivePresentation = Boolean(
+      presentation.sessionKey
+      || presentation.current
+      || presentation.queue.length
+    );
+
+    if (hadActivePresentation) {
+      resetCoachAudioSession(
+        channel,
+        true
+      );
+    }
+
     presentation.sessionKey = (
       sessionKey
     );
@@ -2313,6 +3178,15 @@
               item.index
             )
           );
+
+          // Ao abrir/recarregar uma LIVE, o audio nao le historico antigo.
+          coachAudioState(
+            channel
+          )?.seen.add(
+            coachAudioMessageKey(
+              item.message
+            )
+          );
         }
       );
 
@@ -2435,6 +3309,11 @@
             current,
             next
           ).displayMs
+      );
+
+      enqueueCoachMessageAudio(
+        channel,
+        next
       );
     }
   }
@@ -4356,11 +5235,15 @@
       false
     );
 
+    ensureCoachAudioControls();
+    hydrateCoachAudioPreferences();
+
     bindNavigation();
     bindDialogs();
     bindTheme();
     bindConfigure();
     bindHome();
+    bindCoachAudioControls();
 
     hydrateLiveDraft();
     fillProductFormFromSaved();
