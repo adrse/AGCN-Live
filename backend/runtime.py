@@ -1,8 +1,28 @@
-"""Thin web adapter around the original, sequential Colab modules.
+"""AGCN LIVE / ALIVE runtime adapter.
 
-The sources in original/ are byte-for-byte notebook cells. Each visitor receives
-an independent namespace, just as each Colab run did. No internal asyncio.Queue
-is read here: the Interface V8 callbacks and Live Engine history provide state.
+Arquitetura ativa nesta versao:
+
+Original Colab:
+02 Shopee Worker
+03 TikTok Worker
+04 Live Engine
+05 Coach Storage
+06 Worker Coach Comentarios
+07 Comment Dispatcher V1.1
+08 Coach Produto
+09 Coach Comercial
+10 Coach Objecoes
+11 Worker Audiencia
+12 Context Fusion
+13 Decision Coach
+18 Interface V8 (somente ponte operacional do monitoramento)
+
+Nova arquitetura web:
+Product Context V1
+Sales Coach V2
+
+Os modulos antigos de produto/vendas 14-17 permanecem no repositorio como
+historico, mas NAO sao executados por este runtime.
 """
 
 from __future__ import annotations
@@ -14,433 +34,1607 @@ import re
 import threading
 import time
 import unicodedata
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .product_link import ProductPageWorker, validate_product_link
+from .product_context import ProductContext, ProductContextError
+from .sales_coach import SalesCoach
+
 
 ORIGINAL = Path(__file__).resolve().parent / "original"
-MODULES = sorted(ORIGINAL.glob("[0-1][0-9]_*.py"))
-SKIPPED_IMPORTS = {"requests", "playwright.async_api", "TikTokLive", "TikTokLive.events", "IPython.display", "google.colab"}
+
+ACTIVE_ORIGINAL_PREFIXES = {
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09",
+    "10",
+    "11",
+    "12",
+    "13",
+    "18",
+}
+
+MODULES = [
+    path
+    for path in sorted(
+        ORIGINAL.glob("[0-1][0-9]_*.py")
+    )
+    if path.name[:2]
+    in ACTIVE_ORIGINAL_PREFIXES
+]
+
+SKIPPED_IMPORTS = {
+    "requests",
+    "playwright.async_api",
+    "TikTokLive",
+    "TikTokLive.events",
+    "IPython.display",
+    "google.colab",
+}
 
 
-class MissingCaptureDependency(RuntimeError):
+class MissingCaptureDependency(
+    RuntimeError
+):
     pass
 
 
 class _Unavailable:
-    def __init__(self, name):
+    def __init__(
+        self,
+        name,
+    ):
         self.name = name
 
-    def __call__(self, *args, **kwargs):
-        raise MissingCaptureDependency(f"Dependência do capturador ausente: {self.name}.")
+    def __call__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        raise MissingCaptureDependency(
+            "DependÃªncia do capturador ausente: "
+            f"{self.name}."
+        )
 
-    def __getattr__(self, name):
-        raise MissingCaptureDependency(f"Dependência do capturador ausente: {self.name}.")
-
-
-class _BuilderScope(ast.NodeTransformer):
-    """Two original notebook cells otherwise overwrite each other's stop/seq globals."""
-
-    def visit_Name(self, node):
-        if node.id in {"_stop_requested", "_output_seq"}:
-            node.id = "_sales_builder" + node.id
-        return node
-
-    def visit_Global(self, node):
-        node.names = ["_sales_builder" + name if name in {"_stop_requested", "_output_seq"} else name for name in node.names]
-        return node
+    def __getattr__(
+        self,
+        name,
+    ):
+        raise MissingCaptureDependency(
+            "DependÃªncia do capturador ausente: "
+            f"{self.name}."
+        )
 
 
 def _dependencies():
-    namespace = {"JSON": lambda data: data, "clear_output": lambda *a, **k: None}
-    missing = []
-    imports = {
-        "requests": ["requests"],
-        "playwright.async_api": ["async_playwright"],
-        "TikTokLive": ["TikTokLiveClient"],
-        "TikTokLive.events": ["ConnectEvent", "DisconnectEvent", "LiveEndEvent", "CommentEvent", "LikeEvent", "RoomUserSeqEvent", "FollowEvent", "ShareEvent", "GiftEvent"],
+    namespace = {
+        "JSON": lambda data: data,
+        "clear_output":
+            lambda *args, **kwargs: None,
     }
+
+    missing = []
+
+    imports = {
+        "requests": [
+            "requests",
+        ],
+        "playwright.async_api": [
+            "async_playwright",
+        ],
+        "TikTokLive": [
+            "TikTokLiveClient",
+        ],
+        "TikTokLive.events": [
+            "ConnectEvent",
+            "DisconnectEvent",
+            "LiveEndEvent",
+            "CommentEvent",
+            "LikeEvent",
+            "RoomUserSeqEvent",
+            "FollowEvent",
+            "ShareEvent",
+            "GiftEvent",
+        ],
+    }
+
     for module_name, names in imports.items():
         try:
-            module = importlib.import_module(module_name)
+            module = importlib.import_module(
+                module_name
+            )
         except ImportError:
-            missing.append(module_name)
+            missing.append(
+                module_name
+            )
+
             for name in names:
-                namespace[name] = _Unavailable(module_name)
+                namespace[name] = (
+                    _Unavailable(
+                        module_name
+                    )
+                )
+
             continue
+
         for name in names:
-            namespace[name] = module if name == module_name else getattr(module, name)
-    return namespace, missing
+            namespace[name] = (
+                module
+                if name == module_name
+                else getattr(
+                    module,
+                    name,
+                )
+            )
+
+    return (
+        namespace,
+        missing,
+    )
 
 
 def _norm(value):
-    text = str(value or "").strip().lower()[:1000]
-    text = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
-    return re.sub(r"\s+", " ", text).strip()
+    text = str(
+        value
+        or ""
+    ).strip().lower()[:1000]
+
+    text = "".join(
+        ch
+        for ch in unicodedata.normalize(
+            "NFKD",
+            text,
+        )
+        if not unicodedata.combining(
+            ch
+        )
+    )
+
+    return re.sub(
+        r"\s+",
+        " ",
+        text,
+    ).strip()
 
 
-def _normalize_style(value):
-    style = _norm(value).replace("/", "_").replace(" ", "_")
-    style = re.sub("_+", "_", style)
-    aliases = {"balanced": "equilibrado", "pressure": "pressao_feira", "pressao": "pressao_feira", "feira": "pressao_feira"}
-    style = aliases.get(style, style)
-    if style not in {"equilibrado", "pressao_feira"}:
-        raise ValueError("Estilo inválido. Use equilibrado ou pressao_feira.")
-    return style
+def _normalize_sales_mode(value):
+    raw = _norm(
+        value
+    ).replace(
+        "/",
+        "_",
+    ).replace(
+        " ",
+        "_",
+    )
+
+    raw = re.sub(
+        "_+",
+        "_",
+        raw,
+    )
+
+    aliases = {
+        "leve": "leve",
+        "light": "leve",
+        "equilibrado": "leve",
+        "balanced": "leve",
+        "maximo": "maximo",
+        "maximum": "maximo",
+        "max": "maximo",
+        "pressao": "maximo",
+        "pressao_feira": "maximo",
+        "feira": "maximo",
+    }
+
+    mode = aliases.get(
+        raw,
+        raw,
+    )
+
+    if mode not in {
+        "leve",
+        "maximo",
+    }:
+        raise ValueError(
+            "Modo invÃ¡lido. "
+            "Use leve ou maximo."
+        )
+
+    return mode
 
 
 def _direct_shopee(value):
-    parsed = urlparse(value)
-    if parsed.scheme != "https" or parsed.hostname != "live.shopee.com.br":
+    parsed = urlparse(
+        value
+    )
+
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname
+        != "live.shopee.com.br"
+    ):
         return None
-    session = (parse_qs(parsed.query).get("session") or [None])[0]
-    if not session or not re.fullmatch(r"[A-Za-z0-9_-]{3,100}", session):
+
+    session = (
+        parse_qs(
+            parsed.query
+        ).get(
+            "session"
+        )
+        or [None]
+    )[0]
+
+    if (
+        not session
+        or not re.fullmatch(
+            r"[A-Za-z0-9_-]{3,100}",
+            session,
+        )
+    ):
         return None
-    return {"url": value, "sessionId": session}
+
+    return {
+        "url": value,
+        "sessionId": session,
+    }
 
 
-def validate_input(platform, value):
-    value = str(value or "").strip()
+def validate_input(
+    platform,
+    value,
+):
+    value = str(
+        value
+        or ""
+    ).strip()
+
     if platform == "shopee":
-        parsed = urlparse(value)
-        if parsed.scheme == "https" and parsed.hostname == "br.shp.ee" and re.fullmatch(r"/[A-Za-z0-9_-]+/?", parsed.path) and not parsed.query:
+        parsed = urlparse(
+            value
+        )
+
+        if (
+            parsed.scheme == "https"
+            and parsed.hostname
+            == "br.shp.ee"
+            and re.fullmatch(
+                r"/[A-Za-z0-9_-]+/?",
+                parsed.path,
+            )
+            and not parsed.query
+        ):
             return value
-        if _direct_shopee(value):
+
+        if _direct_shopee(
+            value
+        ):
             return value
-        raise ValueError("Informe um link https://br.shp.ee/... ou uma URL de LIVE com session em live.shopee.com.br.")
+
+        raise ValueError(
+            "Informe um link https://br.shp.ee/... "
+            "ou uma URL da LIVE com session em "
+            "live.shopee.com.br."
+        )
+
     if platform == "tiktok":
-        if value.startswith("https://"):
-            parsed = urlparse(value)
-            if parsed.hostname not in {"tiktok.com", "www.tiktok.com", "m.tiktok.com"}:
-                raise ValueError("Informe @username ou o perfil https://www.tiktok.com/@username.")
-            value = parsed.path.split("/", 2)[1] if parsed.path.startswith("/@") else ""
-        value = value.lstrip("@")
-        if not re.fullmatch(r"[A-Za-z0-9._]{2,24}", value):
-            raise ValueError("Informe um @username válido do TikTok.")
-        return "@" + value
-    raise ValueError("Selecione Shopee ou TikTok.")
+        if value.startswith(
+            "https://"
+        ):
+            parsed = urlparse(
+                value
+            )
+
+            if parsed.hostname not in {
+                "tiktok.com",
+                "www.tiktok.com",
+                "m.tiktok.com",
+            }:
+                raise ValueError(
+                    "Informe @username ou o perfil "
+                    "https://www.tiktok.com/@username."
+                )
+
+            value = (
+                parsed.path.split(
+                    "/",
+                    2,
+                )[1]
+                if parsed.path.startswith(
+                    "/@"
+                )
+                else ""
+            )
+
+        value = value.lstrip(
+            "@"
+        )
+
+        if not re.fullmatch(
+            r"[A-Za-z0-9._]{2,24}",
+            value,
+        ):
+            raise ValueError(
+                "Informe um @username vÃ¡lido "
+                "do TikTok."
+            )
+
+        return (
+            "@"
+            + value
+        )
+
+    raise ValueError(
+        "Selecione Shopee ou TikTok."
+    )
+
+
+def _load_original_modules():
+    ns, missing = _dependencies()
+
+    ns.update({
+        "__name__":
+            "agcn_notebook",
+        "__builtins__":
+            __builtins__,
+    })
+
+    for path in MODULES:
+        tree = ast.parse(
+            path.read_text(
+                encoding="utf-8"
+            ),
+            filename=str(
+                path
+            ),
+        )
+
+        nodes = []
+
+        for node in tree.body:
+            # Interface V8: elimina registro de callbacks,
+            # HTML inline e display especificos do Colab.
+            if (
+                path.name.startswith(
+                    "18_"
+                )
+                and node.lineno
+                >= 1367
+            ):
+                continue
+
+            if (
+                isinstance(
+                    node,
+                    ast.ImportFrom,
+                )
+                and node.module
+                in SKIPPED_IMPORTS
+            ):
+                continue
+
+            if (
+                isinstance(
+                    node,
+                    ast.Import,
+                )
+                and any(
+                    alias.name
+                    in SKIPPED_IMPORTS
+                    for alias in node.names
+                )
+            ):
+                continue
+
+            if (
+                isinstance(
+                    node,
+                    ast.Expr,
+                )
+                and isinstance(
+                    node.value,
+                    ast.Call,
+                )
+                and isinstance(
+                    node.value.func,
+                    ast.Name,
+                )
+                and node.value.func.id
+                in {
+                    "print",
+                    "display",
+                }
+            ):
+                continue
+
+            nodes.append(
+                node
+            )
+
+        tree.body = nodes
+
+        ast.fix_missing_locations(
+            tree
+        )
+
+        exec(
+            compile(
+                tree,
+                str(path),
+                "exec",
+            ),
+            ns,
+        )
+
+    # Mantemos a normalizacao segura usada na
+    # adaptacao web atual.
+    ns["_norm"] = _norm
+
+    return (
+        ns,
+        missing,
+    )
 
 
 def load_runtime():
-    ns, missing = _dependencies()
-    ns.update({"__name__": "agcn_notebook", "__builtins__": __builtins__})
-    for path in MODULES:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        nodes = []
-        for node in tree.body:
-            if path.name.startswith("18_") and node.lineno >= 1367:
-                continue  # Colab callback registration, inline HTML and display
-            if isinstance(node, ast.ImportFrom) and node.module in SKIPPED_IMPORTS:
-                continue
-            if isinstance(node, ast.Import) and any(alias.name in SKIPPED_IMPORTS for alias in node.names):
-                continue
-            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id in {"print", "display"}:
-                continue  # Notebook-only load banners
-            nodes.append(node)
-        tree.body = nodes
-        if path.name.startswith("16_"):
-            tree = _BuilderScope().visit(tree)
-        ast.fix_missing_locations(tree)
-        exec(compile(tree, str(path), "exec"), ns)
+    ns, missing = (
+        _load_original_modules()
+    )
 
-    # Original cells used malformed multi-character maketrans keys. Fix only
-    # normalization, leaving candidate generation and decision logic untouched.
-    ns["_norm"] = _norm
-    ns["_sd_normalize_style"] = _normalize_style
-    original_resolver = ns["resolver_link_mobile"]
+    runtime = NotebookRuntime(
+        ns,
+        missing,
+    )
 
-    async def resolve_shopee(browser, url):
-        return _direct_shopee(url) or await original_resolver(browser, url)
-
-    ns["resolver_link_mobile"] = resolve_shopee
-    original_detect = ns["agcn_detectar_entrada"]
+    # --------------------------------------------------------
+    # DETECCAO DE URL SHOPEE DIRETA
+    # --------------------------------------------------------
+    original_detect = ns[
+        "agcn_detectar_entrada"
+    ]
 
     def detect(value):
-        direct = _direct_shopee(value)
-        return {"platform": "shopee", "value": value} if direct else original_detect(value)
+        direct = _direct_shopee(
+            value
+        )
 
-    ns["agcn_detectar_entrada"] = detect
-    runtime = NotebookRuntime(ns, missing)
+        if direct:
+            return {
+                "platform":
+                    "shopee",
+                "value":
+                    value,
+            }
 
-    # Keep the original V8 processors and their exclusive queue consumers.
-    # Only replace the Shopee LIVE product producer with an explicit product
-    # page input; the validated Extractor → Builder → Decision chain remains.
-    def start_sales_processors(_live_link=None):
-        coroutines = [
-            (ns["executar_product_extractor"](), "Product Extractor"),
-            (ns["executar_product_sales_builder"](), "Product Sales Builder"),
-            (ns["executar_sales_decision_coach"](), "Sales Decision Coach"),
-            (ns["agcn_sales_output_bridge"](), "Sales Output Bridge"),
-        ]
-        ns["agcn_sales_tasks"] = [asyncio.create_task(ns["agcn_sales_guard"](coroutine, label)) for coroutine, label in coroutines]
+        return original_detect(
+            value
+        )
 
-    ns["agcn_iniciar_sales_tasks"] = start_sales_processors
-    original_build_profile = ns["_pe_build_profile"]
+    ns[
+        "agcn_detectar_entrada"
+    ] = detect
 
-    def build_profile(event):
-        profile = original_build_profile(event)
-        if event.get("platform") == "tiktok":
-            # Original extractor schema uses structured_shopee internally.
-            # Preserve that interface for the validated Sales Builder, while
-            # accurately labeling every TikTok fact's source and provenance.
-            def provenance(value):
-                if isinstance(value, dict):
-                    if value.get("source") in {"shopee", "shopee_title"}:
-                        value["source"] = "tiktok_product_page"
-                    for child in value.values():
-                        provenance(child)
-                elif isinstance(value, list):
-                    for child in value:
-                        provenance(child)
-            provenance(profile)
-            profile["provenance"]["automatic_source"] = "tiktok_product_page"
-        elif event.get("source") == "shopee_product_page":
-            def provenance(value):
-                if isinstance(value, dict):
-                    if value.get("source") in {"shopee", "shopee_title"}:
-                        value["source"] = "shopee_product_page"
-                    for child in value.values():
-                        provenance(child)
-                elif isinstance(value, list):
-                    for child in value:
-                        provenance(child)
-            provenance(profile)
-            profile["provenance"]["automatic_source"] = "shopee_product_page"
-        return profile
+    # --------------------------------------------------------
+    # RUNNER WEB V2
+    #
+    # Substitui somente o orquestrador de execucao da
+    # Interface V8.
+    #
+    # O monitoramento/Live Coach continua executando os
+    # wrappers originais 02-13.
+    #
+    # O fluxo antigo 14-17 nao existe neste namespace.
+    # --------------------------------------------------------
+    def runner(
+        plataforma,
+        valor,
+        sales_config=None,
+    ):
+        ns["agcn_monitorando"] = True
+        ns["agcn_status"] = (
+            "iniciando"
+        )
+        ns["agcn_erro"] = None
+        ns["agcn_sales_error"] = None
 
-    ns["_pe_build_profile"] = build_profile
-    original_tiktok = ns["executar_tiktok_com_live_engine"]
+        painel_shopee_original = (
+            ns.get("painel")
+        )
 
-    async def tiktok_with_product_cleanup(value):
+        painel_tiktok_original = (
+            ns.get(
+                "painel_tiktok"
+            )
+        )
+
+        clear_original = (
+            ns.get(
+                "clear_output"
+            )
+        )
+
+        async def painel_shopee():
+            while not ns.get(
+                "encerrar",
+                False,
+            ):
+                await asyncio.sleep(
+                    0.5
+                )
+
+        async def painel_tiktok(
+            client,
+        ):
+            while not (
+                ns.get(
+                    "estado_tiktok",
+                    {},
+                ).get(
+                    "encerrada",
+                    False,
+                )
+            ):
+                await asyncio.sleep(
+                    0.5
+                )
+
+        def clear_silencioso(
+            *args,
+            **kwargs,
+        ):
+            return None
+
+        ns[
+            "clear_output"
+        ] = clear_silencioso
+
+        ns[
+            "painel"
+        ] = painel_shopee
+
+        ns[
+            "painel_tiktok"
+        ] = painel_tiktok
+
+        loop = asyncio.new_event_loop()
+
+        ns[
+            "agcn_loop"
+        ] = loop
+
+        asyncio.set_event_loop(
+            loop
+        )
+
+        sales_task = None
+
+        async def sales_supervisor():
+            # O Dispatcher cria a fila sales no reset
+            # da LIVE. Esperamos essa fila existir antes
+            # de iniciar o consumidor.
+            for _ in range(
+                600
+            ):
+                if (
+                    ns.get(
+                        "comment_dispatcher_sales_queue"
+                    )
+                    is not None
+                ):
+                    break
+
+                if ns.get(
+                    "agcn_stop_requested",
+                    False,
+                ):
+                    return
+
+                await asyncio.sleep(
+                    0.05
+                )
+            else:
+                runtime.sales_coach.last_error = (
+                    "Canal sales do Comment Dispatcher "
+                    "nÃ£o ficou pronto."
+                )
+                return
+
+            await runtime.sales_coach.run(
+                ns[
+                    "comment_dispatcher_next_sales"
+                ],
+                live_running=None,
+            )
+
+        async def executar():
+            nonlocal sales_task
+
+            if plataforma == "shopee":
+                ns[
+                    "agcn_preparar_shopee"
+                ](
+                    valor
+                )
+
+            ns[
+                "agcn_status"
+            ] = "conectando"
+
+            # O Sales Coach pode permanecer OFF.
+            # Mesmo assim o consumidor fica pronto para
+            # quando o usuario ativar o Product Context.
+            runtime.sales_coach.reset_live_state()
+
+            sales_task = (
+                asyncio.create_task(
+                    sales_supervisor()
+                )
+            )
+
+            try:
+                if plataforma == "shopee":
+                    return await ns[
+                        "executar_shopee_com_live_engine"
+                    ]()
+
+                return await ns[
+                    "executar_tiktok_com_live_engine"
+                ](
+                    valor
+                )
+
+            finally:
+                if (
+                    sales_task is not None
+                    and not sales_task.done()
+                ):
+                    sales_task.cancel()
+
+                    try:
+                        await sales_task
+                    except BaseException:
+                        pass
+
+        task = None
+
         try:
-            return await original_tiktok(value)
+            task = loop.create_task(
+                executar()
+            )
+
+            ns[
+                "agcn_task"
+            ] = task
+
+            ns[
+                "agcn_status"
+            ] = "ativo"
+
+            loop.run_until_complete(
+                task
+            )
+
+            if ns.get(
+                "agcn_stop_requested",
+                False,
+            ):
+                ns[
+                    "agcn_status"
+                ] = "encerrado"
+            else:
+                ns[
+                    "agcn_status"
+                ] = "finalizado"
+
+        except asyncio.CancelledError:
+            ns[
+                "agcn_status"
+            ] = "encerrado"
+
+        except BaseException as exc:
+            ns[
+                "agcn_erro"
+            ] = (
+                f"{type(exc).__name__}: "
+                f"{exc}"
+            )
+
+            ns[
+                "agcn_status"
+            ] = "erro"
+
         finally:
-            if ns.get("agcn_sales_tasks"):
-                await ns["agcn_encerrar_sales_tasks"]()
-            await runtime.close_product_browser()
+            try:
+                if (
+                    sales_task is not None
+                    and not sales_task.done()
+                ):
+                    sales_task.cancel()
 
-    ns["executar_tiktok_com_live_engine"] = tiktok_with_product_cleanup
-    original_close_sales = ns["agcn_encerrar_sales_tasks"]
+                    loop.run_until_complete(
+                        asyncio.gather(
+                            sales_task,
+                            return_exceptions=True,
+                        )
+                    )
+            except Exception:
+                pass
 
-    async def close_sales_and_browser():
-        try:
-            return await original_close_sales()
-        finally:
-            await runtime.close_product_browser()
+            try:
+                pendentes = [
+                    item
+                    for item in asyncio.all_tasks(
+                        loop
+                    )
+                    if not item.done()
+                ]
 
-    ns["agcn_encerrar_sales_tasks"] = close_sales_and_browser
+                for item in pendentes:
+                    item.cancel()
+
+                if pendentes:
+                    loop.run_until_complete(
+                        asyncio.gather(
+                            *pendentes,
+                            return_exceptions=True,
+                        )
+                    )
+            except Exception:
+                pass
+
+            try:
+                loop.close()
+            except Exception:
+                pass
+
+            if (
+                painel_shopee_original
+                is not None
+            ):
+                ns[
+                    "painel"
+                ] = painel_shopee_original
+
+            if (
+                painel_tiktok_original
+                is not None
+            ):
+                ns[
+                    "painel_tiktok"
+                ] = painel_tiktok_original
+
+            if (
+                clear_original
+                is not None
+            ):
+                ns[
+                    "clear_output"
+                ] = clear_original
+
+            ns[
+                "agcn_monitorando"
+            ] = False
+
+    ns[
+        "agcn_runner"
+    ] = runner
+
+    # Campo legado usado pela Interface V8.
+    # Agora representa o estado real do Product Context.
+    ns[
+        "agcn_sales_enabled"
+    ] = bool(
+        runtime.product_context.snapshot().get(
+            "enabled"
+        )
+    )
+
     return runtime
 
 
 class NotebookRuntime:
-    def __init__(self, namespace, missing):
+    def __init__(
+        self,
+        namespace,
+        missing,
+    ):
         self.ns = namespace
         self.missing = missing
+
         self.platform = None
         self.generation = 0
-        self.seller_facts = {}
-        self._seller_seeded = False
-        self.product_browser = None
-        self.product_job = None
-        self.product_epoch = 0
-        self.product_state = {"state": "waiting_link", "name": None, "error": None, "url": None}
 
-    def start(self, platform, value, price="", info="", facts=None, style="equilibrado"):
-        value = validate_input(platform, value)
-        if self.ns["agcn_monitorando"]:
-            raise ValueError("Já existe um monitoramento ativo nesta sessão.")
-        needed = ["requests", "playwright.async_api"] if platform == "shopee" else ["TikTokLive", "TikTokLive.events"]
-        missing = [name for name in needed if name in self.missing]
+        self.product_context = (
+            ProductContext()
+        )
+
+        self.sales_coach = (
+            SalesCoach(
+                self.product_context
+            )
+        )
+
+    # ========================================================
+    # LIVE
+    # ========================================================
+
+    def start(
+        self,
+        platform,
+        value,
+        price="",
+        info="",
+        facts=None,
+        style=None,
+    ):
+        value = validate_input(
+            platform,
+            value,
+        )
+
+        if self.ns[
+            "agcn_monitorando"
+        ]:
+            raise ValueError(
+                "JÃ¡ existe um monitoramento "
+                "ativo nesta sessÃ£o."
+            )
+
+        needed = (
+            [
+                "requests",
+                "playwright.async_api",
+            ]
+            if platform == "shopee"
+            else [
+                "TikTokLive",
+                "TikTokLive.events",
+            ]
+        )
+
+        missing = [
+            name
+            for name in needed
+            if name in self.missing
+        ]
+
         if missing:
-            raise MissingCaptureDependency("Dependências Python ainda não instaladas neste servidor: " + ", ".join(missing))
-        self.seller_facts = facts or {}
-        self._seller_seeded = False
-        self.product_epoch += 1
-        self.product_state = {"state": "waiting_link", "name": None, "error": None, "url": None}
-        self.ns["_agcn_requested_sales_style"] = _normalize_style(style)
-        result = self.ns["agcn_callback_start"](value, seller_price=price if platform == "shopee" else "", seller_info=info if platform == "shopee" else "", sales_style=style)
-        if not result["ok"]:
-            raise ValueError(result["message"])
+            raise MissingCaptureDependency(
+                "DependÃªncias Python ainda "
+                "nÃ£o instaladas neste servidor: "
+                + ", ".join(
+                    missing
+                )
+            )
+
+        # Compatibilidade temporaria com o endpoint antigo:
+        # se a versao atual do frontend mandar preco/info,
+        # guardamos somente o que e factual, mas NAO ativamos
+        # o Sales Coach e NAO inventamos nome de produto.
+        if price or info:
+            self.product_context.update(
+                current_price=(
+                    price
+                    if price
+                    else None
+                ),
+                additional_info=(
+                    info
+                    if info
+                    else None
+                ),
+                replace=False,
+            )
+
+        self.sales_coach.reset_live_state()
+
+        result = self.ns[
+            "agcn_callback_start"
+        ](
+            value,
+            seller_price="",
+            seller_info="",
+            sales_style="equilibrado",
+        )
+
+        if not result[
+            "ok"
+        ]:
+            raise ValueError(
+                result[
+                    "message"
+                ]
+            )
+
         self.platform = platform
         self.generation += 1
-        return result
 
-    def _seed_facts(self):
-        # V8 only accepts price and notes on start. Once its extractor reset
-        # completes, pass structured seller facts to that extractor as well.
-        if self._seller_seeded or not self.seller_facts or self.platform != "shopee":
-            return
-        ns = self.ns
-        if not ns.get("agcn_sales_enabled") or not ns.get("product_extractor_state", {}).get("running"):
-            return
-        try:
-            ns["_agcn_call_in_monitor_loop"](ns["product_extractor_set_seller_info"], facts=self.seller_facts, replace=False, emit_update=True)
-            self._seller_seeded = True
-        except Exception:
-            pass  # Retried on the next status until startup completes.
+        product = (
+            self.product_context.snapshot()
+        )
+
+        self.ns[
+            "agcn_sales_enabled"
+        ] = bool(
+            product.get(
+                "enabled"
+            )
+        )
+
+        # Corrige metadados legados devolvidos pela
+        # Interface V8.
+        result[
+            "sales_enabled"
+        ] = bool(
+            product.get(
+                "enabled"
+            )
+        )
+
+        result[
+            "sales_mode"
+        ] = product.get(
+            "mode",
+            "leve",
+        )
+
+        return result
 
     def stop(self):
-        if not self.ns["agcn_monitorando"]:
-            return {"ok": True, "message": "Monitoramento já encerrado."}
-        self.product_epoch += 1
-        loop = self.ns.get("agcn_loop")
-        if loop and loop.is_running() and self.product_browser:
-            try:
-                asyncio.run_coroutine_threadsafe(self.close_product_browser(), loop).result(timeout=4)
-            except Exception:
-                pass
-        result = self.ns["agcn_callback_stop"]()
-        # A stop request can arrive before V8's background thread publishes
-        # its loop/task. Relay cancellation once those handles are available.
-        for _ in range(30):
-            loop, task = self.ns.get("agcn_loop"), self.ns.get("agcn_task")
-            if not self.ns["agcn_monitorando"]:
+        if not self.ns[
+            "agcn_monitorando"
+        ]:
+            return {
+                "ok": True,
+                "message":
+                    "Monitoramento jÃ¡ encerrado.",
+            }
+
+        result = self.ns[
+            "agcn_callback_stop"
+        ]()
+
+        # Uma solicitacao pode chegar antes que a
+        # thread publique loop/task.
+        for _ in range(
+            30
+        ):
+            loop = self.ns.get(
+                "agcn_loop"
+            )
+
+            task = self.ns.get(
+                "agcn_task"
+            )
+
+            if not self.ns[
+                "agcn_monitorando"
+            ]:
                 break
-            if loop and task and not loop.is_closed():
+
+            if (
+                loop
+                and task
+                and not loop.is_closed()
+            ):
                 try:
-                    loop.call_soon_threadsafe(task.cancel)
+                    loop.call_soon_threadsafe(
+                        task.cancel
+                    )
                 except RuntimeError:
                     pass
+
                 break
-            time.sleep(.02)
+
+            time.sleep(
+                0.02
+            )
+
         return result
 
-    def alert_mode(self, value):
-        return self.ns["agcn_callback_set_alert_mode"](value)
+    # ========================================================
+    # LIVE COACH
+    # ========================================================
 
-    def sales_style(self, value):
-        if not self.ns["agcn_monitorando"]:
-            raise ValueError("Inicie uma LIVE para alterar o estilo de vendas.")
-        self.ns["_agcn_requested_sales_style"] = _normalize_style(value)
-        result = self.ns["_agcn_call_in_monitor_loop"](self.ns["sales_decision_set_style"], value, sync_builder=True)
-        return {"ok": True, "style": result["style"]}
-
-    def product_info(self, price="", info="", facts=None):
-        if not self.ns["agcn_monitorando"]:
-            raise ValueError("Atualize as informações durante uma LIVE ativa.")
-        ns = self.ns
-        result = ns["_agcn_call_in_monitor_loop"](
-            ns["product_extractor_set_seller_info"], price=price or None,
-            additional_info=info or None, facts=facts or {}, replace=True, emit_update=True,
+    def alert_mode(
+        self,
+        value,
+    ):
+        return self.ns[
+            "agcn_callback_set_alert_mode"
+        ](
+            value
         )
-        return {"ok": True, "target": result.get("target") if isinstance(result, dict) else None}
 
-    async def close_product_browser(self):
-        if self.product_job and self.product_job is not asyncio.current_task():
-            self.product_job.cancel()
-        self.product_job = None
-        if self.product_browser:
-            browser, self.product_browser = self.product_browser, None
-            await browser.close()
+    # ========================================================
+    # PRODUCT CONTEXT V1
+    # ========================================================
 
-    async def _read_product(self, identity, epoch):
-        ns = self.ns
+    def product_context_state(
+        self,
+    ):
+        return (
+            self.product_context.snapshot()
+        )
+
+    def product_context_update(
+        self,
+        data,
+        *,
+        replace=True,
+    ):
+        if not isinstance(
+            data,
+            dict,
+        ):
+            raise ValueError(
+                "Dados do produto invÃ¡lidos."
+            )
+
         try:
-            if self.platform == "tiktok" and not ns.get("agcn_sales_enabled"):
-                ns["agcn_preparar_sales_pipeline"](sales_style=ns.get("_agcn_requested_sales_style", "equilibrado"))
-                ns["agcn_iniciar_sales_tasks"]()
-            if not self.product_browser:
-                self.product_browser = ProductPageWorker()
-            raw = await self.product_browser.read(identity)
-            if epoch != self.product_epoch or not ns["agcn_monitorando"]:
-                return
-            old = ns["product_extractor_current_profile"]()
-            if old:
-                ns["product_extractor_process_event"]({"type": "product_cleared"})
-            ns["product_extractor_process_event"]({
-                "type": "product_started", "platform": identity["platform"],
-                "source": identity["platform"] + "_product_page",
-                "observed_at": datetime.now(timezone.utc).isoformat(),
-                "item_id": identity["item_id"], "shop_id": identity["shop_id"],
-                "raw_product": raw,
-            })
-            self.product_state.update(state="identified", name=raw["name"], error=None)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            if epoch == self.product_epoch:
-                self.product_state.update(state="error", name=None, error=str(exc))
+            result = (
+                self.product_context.configure(
+                    data,
+                    replace=replace,
+                )
+            )
+        except ProductContextError as exc:
+            raise ValueError(
+                str(exc)
+            ) from exc
 
-    def product_link(self, value):
-        if not self.ns["agcn_monitorando"]:
-            raise ValueError("Inicie a LIVE antes de informar o link do produto.")
-        identity = validate_product_link(value, self.platform)
-        if "playwright.async_api" in self.missing:
-            raise MissingCaptureDependency("Playwright não está instalado no servidor.")
-        self.product_epoch += 1
-        epoch = self.product_epoch
-        self.product_state = {"state": "loading", "name": None, "error": None, "url": identity["url"]}
+        self._sync_sales_enabled()
 
-        def schedule():
-            # V8 starts its monitoring event loop in a background thread.
-            for _ in range(200):
-                loop = self.ns.get("agcn_loop")
-                if loop and loop.is_running():
-                    def launch():
-                        if self.product_job:
-                            self.product_job.cancel()
-                        self.product_job = asyncio.create_task(self._read_product(identity, epoch))
-                    loop.call_soon_threadsafe(launch)
-                    return
-                if not self.ns["agcn_monitorando"] or epoch != self.product_epoch:
-                    return
-                time.sleep(.05)
-            self.product_state.update(state="error", error="O monitoramento não iniciou a tempo.")
+        return {
+            "ok": True,
+            "product_context": result,
+        }
 
-        threading.Thread(target=schedule, daemon=True).start()
-        return {"ok": True, "platform": identity["platform"], "url": identity["url"]}
+    def product_context_activate(
+        self,
+        mode=None,
+    ):
+        try:
+            result = (
+                self.product_context.activate(
+                    mode=mode
+                )
+            )
+        except ProductContextError as exc:
+            raise ValueError(
+                str(exc)
+            ) from exc
 
-    def status(self):
-        self._seed_facts()
+        self._sync_sales_enabled()
+
+        return {
+            "ok": True,
+            "product_context": result,
+        }
+
+    def product_context_deactivate(
+        self,
+    ):
+        result = (
+            self.product_context.deactivate()
+        )
+
+        self._sync_sales_enabled()
+
+        return {
+            "ok": True,
+            "product_context": result,
+        }
+
+    def product_context_clear(
+        self,
+    ):
+        result = (
+            self.product_context.clear_product(
+                keep_mode=True
+            )
+        )
+
+        self.sales_coach.reset_live_state()
+
+        self._sync_sales_enabled()
+
+        return {
+            "ok": True,
+            "product_context": result,
+        }
+
+    def sales_mode(
+        self,
+        value,
+    ):
+        mode = _normalize_sales_mode(
+            value
+        )
+
+        try:
+            result = (
+                self.product_context.set_mode(
+                    mode
+                )
+            )
+        except ProductContextError as exc:
+            raise ValueError(
+                str(exc)
+            ) from exc
+
+        return {
+            "ok": True,
+            "mode":
+                result[
+                    "mode"
+                ],
+            "product_context":
+                result,
+        }
+
+    def _sync_sales_enabled(
+        self,
+    ):
+        enabled = bool(
+            self.product_context.snapshot().get(
+                "enabled"
+            )
+        )
+
+        self.ns[
+            "agcn_sales_enabled"
+        ] = enabled
+
+        return enabled
+
+    # ========================================================
+    # COMPATIBILIDADE TEMPORARIA COM SERVER/FRONTEND V8
+    #
+    # Estes metodos existem apenas para a branch continuar
+    # coerente enquanto server.py e a Interface V9 ainda nao
+    # foram substituidos.
+    # ========================================================
+
+    def sales_style(
+        self,
+        value,
+    ):
+        return self.sales_mode(
+            value
+        )
+
+    def product_info(
+        self,
+        price="",
+        info="",
+        facts=None,
+    ):
+        data = {}
+
+        if price:
+            data[
+                "current_price"
+            ] = price
+
+        if info:
+            data[
+                "additional_info"
+            ] = info
+
+        # O antigo campo JSON "facts" nao faz parte do
+        # Product Context V1. Nao convertemos silenciosamente
+        # estruturas arbitrarias em fatos de produto.
+        if not data:
+            return {
+                "ok": True,
+                "product_context":
+                    self.product_context.snapshot(),
+                "deprecated":
+                    True,
+            }
+
+        result = (
+            self.product_context_update(
+                data,
+                replace=False,
+            )
+        )
+
+        result[
+            "deprecated"
+        ] = True
+
+        return result
+
+    def product_link(
+        self,
+        value,
+    ):
+        raise ValueError(
+            "O Sales Coach V2 nÃ£o usa link do produto. "
+            "Cadastre o produto no Product Context."
+        )
+
+    # ========================================================
+    # STATUS
+    # ========================================================
+
+    def status(
+        self,
+    ):
         ns = self.ns
-        state = ns["agcn_callback_status"]()
-        platform = state.get("platform") or self.platform
-        source = ns.get("estado", {}) if platform == "shopee" else ns.get("estado_tiktok", {})
-        connected = bool(source.get("ultimaMetrica") and source.get("sessionId")) if platform == "shopee" else bool(source.get("conectada") or source.get("conectado"))
-        # Event histories are snapshots, not additional consumers of any queue.
-        history = ns["live_engine_recent_events"](300)
+
+        state = ns[
+            "agcn_callback_status"
+        ]()
+
+        platform = (
+            state.get(
+                "platform"
+            )
+            or self.platform
+        )
+
+        source = (
+            ns.get(
+                "estado",
+                {},
+            )
+            if platform == "shopee"
+            else ns.get(
+                "estado_tiktok",
+                {},
+            )
+        )
+
+        if platform == "shopee":
+            connected = bool(
+                source.get(
+                    "ultimaMetrica"
+                )
+                and source.get(
+                    "sessionId"
+                )
+            )
+        else:
+            connected = bool(
+                source.get(
+                    "conectada"
+                )
+                or source.get(
+                    "conectado"
+                )
+            )
+
+        # Historico e snapshot: nao consomem filas.
+        history = ns[
+            "live_engine_recent_events"
+        ](
+            300
+        )
+
         comments = []
+
         for event in history:
-            if event.get("type") != "comment":
+            if event.get(
+                "type"
+            ) != "comment":
                 continue
-            payload = event.get("payload") or {}
+
+            payload = (
+                event.get(
+                    "payload"
+                )
+                or {}
+            )
+
             comments.append({
-                "id": str(event.get("event_id") or event.get("id") or f"{event.get('iso_time')}:{len(comments)}"),
-                "user": ns["agcn_repair_text"](payload.get("user") or "Usuário"),
-                "text": ns["agcn_repair_text"](payload.get("text") or ""),
-                "time": payload.get("display_time") or "",
+                "id": str(
+                    event.get(
+                        "event_id"
+                    )
+                    or event.get(
+                        "id"
+                    )
+                    or (
+                        f"{event.get('iso_time')}:"
+                        f"{len(comments)}"
+                    )
+                ),
+                "user":
+                    ns[
+                        "agcn_repair_text"
+                    ](
+                        payload.get(
+                            "user"
+                        )
+                        or "UsuÃ¡rio"
+                    ),
+                "text":
+                    ns[
+                        "agcn_repair_text"
+                    ](
+                        payload.get(
+                            "text"
+                        )
+                        or ""
+                    ),
+                "time":
+                    payload.get(
+                        "display_time"
+                    )
+                    or "",
             })
-        profile = ns["product_extractor_current_profile"]() if state["monitorando"] and ns.get("agcn_sales_enabled") else None
-        name = self.product_state.get("name")
-        if not name and isinstance(profile, dict):
-            section = profile.get("product") or {}
-            fact = section.get("name") or section.get("title") or {}
-            name = fact.get("value") if isinstance(fact, dict) else fact
-        price_fact = ((profile or {}).get("price") or {}).get("shopee_current") or {}
-        price_value = price_fact.get("value") if isinstance(price_fact, dict) else None
-        price = price_value.get("normalized") if isinstance(price_value, dict) else None
-        error = state.get("error") or source.get("erro")
-        if not error and not state["monitorando"] and platform == "tiktok":
-            error = source.get("erro")
+
+        error = (
+            state.get(
+                "error"
+            )
+            or source.get(
+                "erro"
+            )
+        )
+
+        if (
+            not error
+            and not state[
+                "monitorando"
+            ]
+            and platform
+            == "tiktok"
+        ):
+            error = source.get(
+                "erro"
+            )
+
+        product_context = (
+            self.product_context.snapshot()
+        )
+
+        product = (
+            product_context.get(
+                "product"
+            )
+            or {}
+        )
+
+        sales = (
+            self.sales_coach.snapshot()
+        )
+
+        now = time.time()
+
+        sales_messages = []
+
+        for message in (
+            sales.get(
+                "messages"
+            )
+            or []
+        ):
+            expires_at = (
+                message.get(
+                    "expires_at"
+                )
+            )
+
+            try:
+                expires_at = float(
+                    expires_at
+                )
+            except (
+                TypeError,
+                ValueError,
+            ):
+                expires_at = (
+                    now
+                    + float(
+                        message.get(
+                            "display_seconds"
+                        )
+                        or 10
+                    )
+                )
+
+            if expires_at <= now:
+                continue
+
+            timestamp = (
+                message.get(
+                    "timestamp"
+                )
+                or now
+            )
+
+            try:
+                hora = time.strftime(
+                    "%H:%M:%S",
+                    time.localtime(
+                        float(
+                            timestamp
+                        )
+                    ),
+                )
+            except Exception:
+                hora = ""
+
+            item = copy_dict = dict(
+                message
+            )
+
+            item[
+                "hora"
+            ] = hora
+
+            item[
+                "expires_at"
+            ] = expires_at
+
+            sales_messages.append(
+                copy_dict
+            )
+
+        enabled = bool(
+            product_context.get(
+                "enabled"
+            )
+        )
+
+        self.ns[
+            "agcn_sales_enabled"
+        ] = enabled
+
         state.update({
-            "connected": connected,
-            "error": str(error) if error else None,
-            "generation": self.generation,
-            "server_time": time.time(),
-            "comments": comments[-80:],
+            "connected":
+                connected,
+
+            "error":
+                str(error)
+                if error
+                else None,
+
+            "generation":
+                self.generation,
+
+            "server_time":
+                now,
+
+            "comments":
+                comments[-80:],
+
+            "product_context":
+                product_context,
+
+            # Campo simplificado para compatibilidade visual
+            # durante a migracao para Interface V9.
             "product": {
-                "state": self.product_state["state"] if state["monitorando"] else "waiting_link",
-                "name": ns["agcn_repair_text"](name) if name else None,
-                "price": price,
-                "error": self.product_state.get("error"),
-                "url": self.product_state.get("url"),
-                "conflicts": (profile or {}).get("conflicts", []) if isinstance(profile, dict) else [],
-            } if platform in {"shopee", "tiktok"} else None,
+                "state": (
+                    "active"
+                    if enabled
+                    else "configured"
+                    if product_context.get(
+                        "ready"
+                    )
+                    else "empty"
+                ),
+                "name":
+                    product.get(
+                        "name"
+                    ),
+                "price": (
+                    product.get(
+                        "current_price"
+                    )
+                    if product.get(
+                        "current_price"
+                    )
+                    is not None
+                    else product.get(
+                        "regular_price"
+                    )
+                ),
+                "regular_price":
+                    product.get(
+                        "regular_price"
+                    ),
+                "current_price":
+                    product.get(
+                        "current_price"
+                    ),
+                "discount_percent":
+                    product.get(
+                        "discount_percent"
+                    ),
+                "description":
+                    product.get(
+                        "description"
+                    ),
+                "additional_info":
+                    product.get(
+                        "additional_info"
+                    ),
+                "error":
+                    None,
+                "url":
+                    None,
+                "conflicts":
+                    [],
+            },
+
+            "sales_coach": {
+                "version":
+                    sales.get(
+                        "version"
+                    ),
+                "enabled":
+                    bool(
+                        enabled
+                        and state.get(
+                            "monitorando"
+                        )
+                    ),
+                "configured":
+                    bool(
+                        product_context.get(
+                            "ready"
+                        )
+                    ),
+                "active":
+                    enabled,
+                "available_for_platform":
+                    platform
+                    in {
+                        None,
+                        "shopee",
+                        "tiktok",
+                    },
+                "mode":
+                    product_context.get(
+                        "mode",
+                        "leve",
+                    ),
+                # Alias temporario ate a Interface V9
+                # deixar de usar "style".
+                "style":
+                    product_context.get(
+                        "mode",
+                        "leve",
+                    ),
+                "running":
+                    sales.get(
+                        "running",
+                        False,
+                    ),
+                "messages":
+                    sales_messages,
+                "recent_comment_count":
+                    sales.get(
+                        "recent_comment_count",
+                        0,
+                    ),
+                "last_output_at":
+                    sales.get(
+                        "last_output_at"
+                    ),
+                "last_reactive_at":
+                    sales.get(
+                        "last_reactive_at"
+                    ),
+                "last_proactive_at":
+                    sales.get(
+                        "last_proactive_at"
+                    ),
+                "error":
+                    sales.get(
+                        "last_error"
+                    ),
+            },
         })
-        if state.get("sales_coach"):
-            state["sales_coach"]["available_for_platform"] = platform in {"shopee", "tiktok"}
-            state["sales_coach"]["enabled"] = bool(ns.get("agcn_sales_enabled") and state["monitorando"] and self.product_state.get("url"))
-            state["sales_coach"]["error"] = self.product_state.get("error") or state["sales_coach"].get("error")
+
         return state
