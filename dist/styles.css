@@ -4597,3 +4597,77 @@ html[data-theme="dark"]
   }
 }
 
+/* ==========================================================
+   28. INTERFACE V9.5 - BOTTOM NAV BUTTON VISUAL
+   Somente caracteristica visual dos botoes.
+   A barra inferior mantem altura, espacamento e estrutura atuais.
+   ========================================================== */
+
+@media (max-width: 1079px) {
+  .bottom-nav-item {
+    padding-left: 4px;
+    padding-right: 4px;
+
+    gap: 3px;
+
+    color: #737b8e;
+    background: transparent;
+
+    border-radius: 0;
+
+    font-size: 9px;
+    font-weight: 500;
+    line-height: 1.05;
+  }
+
+  .bottom-nav-item:hover {
+    background: transparent;
+  }
+
+  .bottom-nav-item:active {
+    background: transparent;
+    transform: scale(.97);
+  }
+
+  .bottom-nav-icon {
+    width: 21px;
+    height: 21px;
+  }
+
+  .bottom-nav-item.is-active {
+    color: #0061ff;
+    background: transparent;
+
+    font-weight: 550;
+  }
+
+  .bottom-nav-indicator {
+    bottom: 3px;
+
+    width: 26px;
+    height: 2.5px;
+
+    background: transparent;
+    border-radius: 999px;
+  }
+
+  .bottom-nav-item.is-active
+  .bottom-nav-indicator {
+    width: 30px;
+    height: 2.5px;
+
+    background: #0061ff;
+  }
+}
+
+@media (max-width: 390px) {
+  .bottom-nav-item {
+    font-size: 8.5px;
+  }
+
+  .bottom-nav-icon {
+    width: 20px;
+    height: 20px;
+  }
+}
+
