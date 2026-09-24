@@ -3803,3 +3803,672 @@ html[data-theme="dark"] .dialog-header {
     transform: rotate(6deg);
   }
 }
+
+/* ==========================================================
+   25. INTERFACE V9.1 - COMPACT MONITOR + COACH CADENCE
+   + NEUTRAL ORBIT + DARK BRAND FIX
+   ========================================================== */
+
+/* ----------------------------------------------------------
+   BRAND - DARK THEME
+   ---------------------------------------------------------- */
+
+html[data-theme="dark"] .brand-button,
+html[data-theme="dark"] .brand-wordmark,
+html[data-theme="dark"] .brand-agcn,
+html[data-theme="dark"] .brand-live {
+  color: #ffffff;
+}
+
+
+/* ----------------------------------------------------------
+   CONFIGURE - ORBITAL PLATFORM ANIMATION
+   ---------------------------------------------------------- */
+
+.platform-orbit {
+  --platform-orbit-radius: 76px;
+}
+
+.orbit-ring {
+  border-color: rgba(107, 114, 128, .20);
+}
+
+.orbit-dot {
+  background: rgba(107, 114, 128, .48);
+
+  box-shadow:
+    0 0 0 5px rgba(107, 114, 128, .07);
+}
+
+.platform-float {
+  top: 50%;
+  left: 50%;
+  right: auto;
+
+  width: 72px;
+  height: 72px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, .68),
+      rgba(243, 245, 249, .42)
+    );
+
+  border: 1px solid rgba(172, 179, 190, .34);
+
+  border-radius: 21px;
+
+  box-shadow:
+    0 14px 34px rgba(37, 45, 58, .07),
+    inset 0 1px 0 rgba(255, 255, 255, .54);
+
+  opacity: .55;
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  will-change:
+    transform,
+    opacity,
+    filter;
+}
+
+.platform-float-shopee,
+.platform-float-tiktok {
+  top: 50%;
+  left: 50%;
+  right: auto;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, .68),
+      rgba(243, 245, 249, .42)
+    );
+
+  transform:
+    translate3d(-50%, -50%, 0)
+    rotate(0deg)
+    translateX(
+      var(--platform-orbit-radius)
+    )
+    rotate(0deg)
+    scale(1.08);
+
+  animation:
+    platform-orbit-cycle
+    16s
+    linear
+    infinite;
+}
+
+.platform-float-tiktok {
+  animation-delay: -8s;
+}
+
+.shopee-logo-mark {
+  color: #7b8492;
+  background: rgba(255, 255, 255, .42);
+
+  border-color: #8d96a3;
+
+  opacity: .76;
+
+  filter:
+    grayscale(1)
+    saturate(0);
+}
+
+.shopee-handle {
+  border-color: #8d96a3;
+}
+
+.tiktok-logo-mark {
+  opacity: .72;
+
+  filter:
+    grayscale(1)
+    saturate(0)
+    contrast(.88);
+}
+
+.orbit-feature {
+  color: #747d8c;
+  background: rgba(255, 255, 255, .50);
+
+  border-color: rgba(172, 179, 190, .26);
+
+  box-shadow:
+    0 10px 25px rgba(37, 45, 58, .055);
+
+  opacity: .58;
+}
+
+.orbit-feature-analytics,
+.orbit-feature-coach {
+  color: #747d8c;
+}
+
+
+/* ----------------------------------------------------------
+   MONITOR - MORE INFORMATION ABOVE THE FOLD
+   ---------------------------------------------------------- */
+
+.screen-monitor .screen-heading {
+  margin-bottom: 14px;
+}
+
+.screen-monitor .screen-heading h1 {
+  margin-top: 7px;
+
+  font-size:
+    clamp(
+      28px,
+      8vw,
+      42px
+    );
+}
+
+.screen-monitor .screen-heading p {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.monitor-live-status {
+  min-height: 52px;
+  padding: 0 13px;
+
+  border-radius: 15px;
+}
+
+.monitor-layout {
+  margin-top: 10px;
+
+  gap: 10px;
+}
+
+.monitor-primary {
+  gap: 10px;
+}
+
+.metrics-grid {
+  gap: 8px;
+}
+
+.metric-card {
+  min-height: 0;
+  aspect-ratio: 16 / 9;
+
+  padding: 10px 11px;
+
+  display: grid;
+
+  grid-template-columns:
+    auto
+    minmax(0, 1fr);
+
+  grid-template-areas:
+    "metric-icon metric-value"
+    "metric-label metric-label";
+
+  align-content: center;
+  align-items: center;
+
+  column-gap: 9px;
+  row-gap: 5px;
+
+  border-radius: 15px;
+}
+
+.metric-card-icon {
+  grid-area: metric-icon;
+
+  width: 32px;
+  height: 32px;
+
+  border-radius: 10px;
+}
+
+.metric-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.metric-card strong {
+  grid-area: metric-value;
+
+  margin-top: 0;
+
+  overflow: hidden;
+
+  font-size:
+    clamp(
+      22px,
+      6.4vw,
+      29px
+    );
+
+  line-height: 1;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-card > span:not(.metric-card-icon) {
+  grid-area: metric-label;
+
+  margin-top: 0;
+
+  overflow: hidden;
+
+  font-size: 10px;
+  line-height: 1.15;
+
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric-card small {
+  display: none;
+}
+
+
+/* ----------------------------------------------------------
+   COACHES - ONE MESSAGE AT A TIME
+   ---------------------------------------------------------- */
+
+#live-coach-more-button,
+#sales-coach-more-button {
+  display: none !important;
+}
+
+.coach-grid {
+  gap: 8px;
+}
+
+.coach-card {
+  min-height: 0;
+  padding: 13px;
+
+  border-radius: 16px;
+}
+
+.coach-card-header {
+  align-items: center;
+}
+
+.coach-card-title {
+  gap: 9px;
+}
+
+.coach-card-icon {
+  width: 34px;
+  height: 34px;
+
+  border-radius: 11px;
+}
+
+.coach-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.coach-card .section-label {
+  font-size: 9px;
+  letter-spacing: .13em;
+}
+
+.coach-card-title h2 {
+  margin-top: 2px;
+
+  font-size: 15px;
+}
+
+.coach-preview {
+  min-height: 58px;
+  margin-top: 9px;
+
+  display: grid;
+  align-items: stretch;
+}
+
+.coach-empty {
+  min-height: 58px;
+  padding: 10px 11px;
+
+  border-radius: 12px;
+}
+
+.coach-empty strong {
+  font-size: 11px;
+}
+
+.coach-empty p {
+  margin-top: 3px;
+
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.coach-message-item {
+  min-height: 58px;
+  padding: 9px 5px 9px 14px;
+
+  display: flex;
+  align-items: center;
+
+  color: var(--text-secondary);
+
+  font-size: 10.5px;
+  line-height: 1.42;
+
+  animation:
+    coach-message-enter
+    180ms
+    var(--ease-standard)
+    both;
+}
+
+.coach-message-item::before {
+  top: 50%;
+
+  transform:
+    translateY(-50%);
+}
+
+.coach-preview-is-gap {
+  min-height: 58px;
+}
+
+.coach-preview-is-gap::after {
+  content: "";
+
+  display: block;
+
+  min-height: 58px;
+}
+
+
+/* ----------------------------------------------------------
+   DARK THEME - NEUTRAL CONFIGURE ORBIT
+   ---------------------------------------------------------- */
+
+html[data-theme="dark"] .platform-float,
+html[data-theme="dark"] .platform-float-shopee,
+html[data-theme="dark"] .platform-float-tiktok {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(39, 43, 50, .72),
+      rgba(24, 27, 32, .52)
+    );
+
+  border-color:
+    rgba(151, 159, 171, .20);
+
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+html[data-theme="dark"] .shopee-logo-mark {
+  color: #a3aab5;
+  background: rgba(29, 33, 39, .55);
+
+  border-color: #939ba8;
+}
+
+html[data-theme="dark"] .shopee-handle {
+  border-color: #939ba8;
+}
+
+html[data-theme="dark"] .orbit-feature {
+  color: #929aa7;
+  background: rgba(32, 36, 43, .58);
+
+  border-color:
+    rgba(151, 159, 171, .17);
+}
+
+
+/* ----------------------------------------------------------
+   TABLET / DESKTOP COMPACTNESS
+   ---------------------------------------------------------- */
+
+@media (min-width: 720px) {
+  .platform-orbit {
+    --platform-orbit-radius: 126px;
+  }
+
+  .platform-float {
+    width: 84px;
+    height: 84px;
+  }
+
+  .metrics-grid {
+    gap: 9px;
+  }
+
+  .metric-card {
+    min-height: 0;
+    padding: 11px 12px;
+  }
+
+  .metric-card strong {
+    font-size: 27px;
+  }
+
+  .coach-card {
+    min-height: 0;
+    padding: 14px;
+  }
+}
+
+@media (min-width: 1080px) {
+  .platform-orbit {
+    --platform-orbit-radius: 168px;
+  }
+
+  .platform-float {
+    width: 92px;
+    height: 92px;
+  }
+
+  .monitor-primary {
+    gap: 12px;
+  }
+
+  .metric-card {
+    min-height: 0;
+    padding: 12px 13px;
+  }
+
+  .metric-card strong {
+    font-size: 29px;
+  }
+
+  .coach-card {
+    min-height: 0;
+    padding: 15px;
+  }
+
+  .coach-preview,
+  .coach-preview-is-gap {
+    min-height: 62px;
+  }
+
+  .coach-preview-is-gap::after,
+  .coach-message-item,
+  .coach-empty {
+    min-height: 62px;
+  }
+}
+
+
+/* ----------------------------------------------------------
+   NEW MOTION
+   ---------------------------------------------------------- */
+
+@keyframes platform-orbit-cycle {
+  0%,
+  100% {
+    opacity: .94;
+
+    filter:
+      grayscale(.25)
+      saturate(.28);
+
+    transform:
+      translate3d(-50%, -50%, 0)
+      rotate(0deg)
+      translateX(
+        var(--platform-orbit-radius)
+      )
+      rotate(0deg)
+      scale(1.08);
+  }
+
+  12% {
+    opacity: .80;
+
+    transform:
+      translate3d(-50%, -50%, 0)
+      rotate(43deg)
+      translateX(
+        var(--platform-orbit-radius)
+      )
+      rotate(-43deg)
+      scale(1.02);
+  }
+
+  30% {
+    opacity: .52;
+
+    filter:
+      grayscale(1)
+      saturate(0);
+
+    transform:
+      translate3d(-50%, -50%, 0)
+      rotate(108deg)
+      translateX(
+        var(--platform-orbit-radius)
+      )
+      rotate(-108deg)
+      scale(.95);
+  }
+
+  50% {
+    opacity: .38;
+
+    filter:
+      grayscale(1)
+      saturate(0);
+
+    transform:
+      translate3d(-50%, -50%, 0)
+      rotate(180deg)
+      translateX(
+        var(--platform-orbit-radius)
+      )
+      rotate(-180deg)
+      scale(.90);
+  }
+
+  70% {
+    opacity: .52;
+
+    filter:
+      grayscale(1)
+      saturate(0);
+
+    transform:
+      translate3d(-50%, -50%, 0)
+      rotate(252deg)
+      translateX(
+        var(--platform-orbit-radius)
+      )
+      rotate(-252deg)
+      scale(.95);
+  }
+
+  88% {
+    opacity: .80;
+
+    transform:
+      translate3d(-50%, -50%, 0)
+      rotate(317deg)
+      translateX(
+        var(--platform-orbit-radius)
+      )
+      rotate(-317deg)
+      scale(1.02);
+  }
+}
+
+@keyframes coach-message-enter {
+  from {
+    opacity: 0;
+
+    transform:
+      translate3d(
+        0,
+        4px,
+        0
+      );
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      translate3d(
+        0,
+        0,
+        0
+      );
+  }
+}
+
+
+/* ----------------------------------------------------------
+   REDUCED MOTION OVERRIDES
+   ---------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-float-shopee,
+  .platform-float-tiktok {
+    opacity: .66;
+
+    animation: none !important;
+
+    filter:
+      grayscale(1)
+      saturate(0);
+  }
+
+  .platform-float-shopee {
+    transform:
+      translate3d(-50%, -50%, 0)
+      translateX(
+        calc(
+          var(--platform-orbit-radius)
+          * -1
+        )
+      );
+  }
+
+  .platform-float-tiktok {
+    transform:
+      translate3d(-50%, -50%, 0)
+      translateX(
+        var(--platform-orbit-radius)
+      );
+  }
+
+  .coach-message-item {
+    animation: none !important;
+  }
+}
+
