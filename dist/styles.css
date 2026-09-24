@@ -4245,3 +4245,147 @@ html[data-theme="dark"] .coach-countdown {
   }
 }
 
+/* ==========================================================
+   26. INTERFACE V9.3 - COACH AUDIO CONTROLS
+   ========================================================== */
+
+.coach-card-header {
+  gap: 10px;
+}
+
+.coach-audio-toggle {
+  min-height: 32px;
+  padding: 7px 9px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  flex: 0 0 auto;
+
+  color: var(--text-tertiary);
+  background: rgba(107, 114, 128, .065);
+
+  border: 1px solid rgba(107, 114, 128, .14);
+  border-radius: 999px;
+
+  font: inherit;
+  font-size: 10px;
+  font-weight: 680;
+  line-height: 1;
+
+  cursor: pointer;
+
+  transition:
+    color 160ms var(--ease-standard),
+    background-color 160ms var(--ease-standard),
+    border-color 160ms var(--ease-standard),
+    box-shadow 160ms var(--ease-standard),
+    transform 120ms var(--ease-standard);
+}
+
+.coach-audio-toggle:hover {
+  color: var(--text-primary);
+  background: rgba(107, 114, 128, .10);
+
+  border-color: rgba(107, 114, 128, .22);
+}
+
+.coach-audio-toggle:active {
+  transform: scale(.97);
+}
+
+.coach-audio-toggle:focus-visible {
+  outline: 2px solid rgba(0, 97, 255, .34);
+  outline-offset: 2px;
+}
+
+.coach-audio-toggle[data-active="true"] {
+  color: var(--brand-blue);
+  background: var(--brand-blue-soft);
+
+  border-color: rgba(0, 97, 255, .18);
+
+  box-shadow:
+    0 0 0 3px rgba(0, 97, 255, .04);
+}
+
+.coach-audio-toggle:disabled {
+  opacity: .48;
+
+  cursor: not-allowed;
+}
+
+.coach-audio-icon {
+  width: 14px;
+  height: 14px;
+
+  flex: 0 0 auto;
+}
+
+.coach-audio-label {
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .coach-audio-toggle {
+  color: #9ba3af;
+  background: rgba(255, 255, 255, .045);
+
+  border-color: rgba(255, 255, 255, .085);
+}
+
+html[data-theme="dark"] .coach-audio-toggle:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, .075);
+
+  border-color: rgba(255, 255, 255, .13);
+}
+
+html[data-theme="dark"] .coach-audio-toggle[data-active="true"] {
+  color: #72a9ff;
+  background: rgba(0, 97, 255, .13);
+
+  border-color: rgba(114, 169, 255, .20);
+}
+
+@media (max-width: 390px) {
+  .coach-card-header {
+    gap: 7px;
+  }
+
+  .coach-audio-toggle {
+    min-height: 30px;
+    padding: 6px 8px;
+
+    gap: 5px;
+
+    font-size: 9.5px;
+  }
+
+  .coach-audio-icon {
+    width: 13px;
+    height: 13px;
+  }
+}
+
+@media (min-width: 720px) {
+  .coach-audio-toggle {
+    min-height: 34px;
+    padding: 8px 11px;
+
+    font-size: 10.5px;
+  }
+
+  .coach-audio-icon {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coach-audio-toggle {
+    transition: none !important;
+  }
+}
+
