@@ -2,7 +2,7 @@
   "use strict";
 
   // =========================================================
-  // AGCN LIVE - INTERFACE V9
+  // AGCN LIVE - INTERFACE V9.1
   // Frontend real para Runtime/Server V2.1.
   // =========================================================
 
@@ -110,6 +110,59 @@
   let timerRunning = false;
 
   let toastTimer = null;
+
+  // =========================================================
+  // COACH PRESENTATION CADENCE
+  //
+  // Live Coach:
+  // - 8 s visivel
+  // - 3 s de intervalo
+  //
+  // Sales Coach:
+  // - Leve: 8 s visivel + 3 s de intervalo
+  // - Maximo: 6 s visivel + 2 s de intervalo
+  //
+  // A cadencia e apenas de apresentacao. O motor continua
+  // classificando e produzindo orientacoes normalmente.
+  // =========================================================
+
+  const COACH_TIMING = {
+    live: {
+      displayMs: 8000,
+      gapMs: 3000,
+    },
+    sales: {
+      leve: {
+        displayMs: 8000,
+        gapMs: 3000,
+      },
+      maximo: {
+        displayMs: 6000,
+        gapMs: 2000,
+      },
+    },
+  };
+
+  const coachPresentation = {
+    live: {
+      sessionKey: null,
+      initialized: false,
+      seen: new Set(),
+      queue: [],
+      current: null,
+      phase: "idle",
+      phaseUntil: 0,
+    },
+    sales: {
+      sessionKey: null,
+      initialized: false,
+      seen: new Set(),
+      queue: [],
+      current: null,
+      phase: "idle",
+      phaseUntil: 0,
+    },
+  };
 
   // =========================================================
   // STORAGE
@@ -2014,6 +2067,15 @@
   }
 
   function messageText(message) {
+    if (
+      typeof message === "string"
+      || typeof message === "number"
+    ) {
+      return normalizeText(
+        message
+      );
+    }
+
     return normalizeText(
       message?.texto
       || message?.message
@@ -2041,96 +2103,461 @@
     return row;
   }
 
-  function renderCoachList(
-    containerId,
+  function coachMessageKey(
+    message,
+    index = 0
+  ) {
+    if (
+      message
+      && typeof message === "object"
+    ) {
+      const directId = (
+        message.id
+        || message.output_id
+        || message.decision_id
+        || message.event_id
+        || message.source_dispatch_id
+      );
+
+      if (directId) {
+        return (
+          "id:"
+          + String(
+            directId
+          )
+        );
+      }
+
+      const timestamp = (
+        message.timestamp
+        || message.created_at
+        || message.iso_time
+        || message.hora
+        || ""
+      );
+
+      return (
+        "msg:"
+        + String(
+          timestamp
+        )
+        + ":"
+        + messageText(
+          message
+        )
+      );
+    }
+
+    return (
+      "primitive:"
+      + String(
+        index
+      )
+      + ":"
+      + messageText(
+        message
+      )
+    );
+  }
+
+  function resetCoachPresentation(
+    channel,
+    sessionKey = null
+  ) {
+    const presentation = (
+      coachPresentation[
+        channel
+      ]
+    );
+
+    if (!presentation) {
+      return;
+    }
+
+    presentation.sessionKey = (
+      sessionKey
+    );
+
+    presentation.initialized = false;
+    presentation.seen.clear();
+    presentation.queue.length = 0;
+    presentation.current = null;
+    presentation.phase = "idle";
+    presentation.phaseUntil = 0;
+  }
+
+  function coachSessionKey(
+    current
+  ) {
+    if (!current?.monitorando) {
+      return null;
+    }
+
+    return [
+      current?.generation ?? "",
+      current?.platform ?? "",
+      current?.live_id ?? "",
+      current?.live_session?.session_id ?? "",
+      current?.live_session?.started_at ?? "",
+    ].join("|");
+  }
+
+  function salesPresentationMode(
+    current,
+    message = null
+  ) {
+    const raw = normalizeText(
+      message?.mode
+      || current?.product_context?.mode
+      || current?.sales_coach?.mode
+      || current?.sales_coach?.style
+      || "leve"
+    ).toLowerCase();
+
+    return (
+      raw === "maximo"
+      || raw === "maximum"
+      || raw === "max"
+      || raw === "pressao"
+      || raw === "pressao_feira"
+      ? "maximo"
+      : "leve"
+    );
+  }
+
+  function coachTiming(
+    channel,
+    current,
+    message = null
+  ) {
+    if (channel === "sales") {
+      return (
+        COACH_TIMING.sales[
+          salesPresentationMode(
+            current,
+            message
+          )
+        ]
+        || COACH_TIMING.sales.leve
+      );
+    }
+
+    return COACH_TIMING.live;
+  }
+
+  function ingestCoachMessages(
+    channel,
     messages,
-    emptyTitle,
-    emptyDescription,
-    limit = 3
+    current
+  ) {
+    const presentation = (
+      coachPresentation[
+        channel
+      ]
+    );
+
+    if (!presentation) {
+      return;
+    }
+
+    const sessionKey = (
+      coachSessionKey(
+        current
+      )
+    );
+
+    if (
+      presentation.sessionKey
+      !== sessionKey
+    ) {
+      resetCoachPresentation(
+        channel,
+        sessionKey
+      );
+    }
+
+    if (!sessionKey) {
+      return;
+    }
+
+    const useful = (
+      Array.isArray(
+        messages
+      )
+      ? messages
+          .map(
+            (message, index) => ({
+              message,
+              index,
+              text:
+                messageText(
+                  message
+                ),
+            })
+          )
+          .filter(
+            (item) => item.text
+          )
+      : []
+    );
+
+    // Ao abrir/recarregar a pagina durante uma LIVE, nao reproduzimos
+    // um backlog antigo inteiro. Marcamos o historico recebido como visto
+    // e, se houver algo atual, mostramos apenas a orientacao mais recente.
+    if (!presentation.initialized) {
+      useful.forEach(
+        (item) => {
+          presentation.seen.add(
+            coachMessageKey(
+              item.message,
+              item.index
+            )
+          );
+        }
+      );
+
+      if (useful.length) {
+        presentation.queue.push(
+          useful[
+            useful.length - 1
+          ].message
+        );
+      }
+
+      presentation.initialized = true;
+      return;
+    }
+
+    useful.forEach(
+      (item) => {
+        const key = (
+          coachMessageKey(
+            item.message,
+            item.index
+          )
+        );
+
+        if (
+          presentation.seen.has(
+            key
+          )
+        ) {
+          return;
+        }
+
+        presentation.seen.add(
+          key
+        );
+
+        presentation.queue.push(
+          item.message
+        );
+      }
+    );
+
+    // Protecao contra uma fila visual muito antiga caso uma LIVE
+    // extremamente movimentada gere orientacoes em alta velocidade.
+    if (
+      presentation.queue.length
+      > 30
+    ) {
+      presentation.queue.splice(
+        0,
+        presentation.queue.length
+        - 30
+      );
+    }
+  }
+
+  function advanceCoachPresentation(
+    channel,
+    current,
+    now = Date.now()
+  ) {
+    const presentation = (
+      coachPresentation[
+        channel
+      ]
+    );
+
+    if (!presentation) {
+      return;
+    }
+
+    if (!current?.monitorando) {
+      resetCoachPresentation(
+        channel,
+        null
+      );
+      return;
+    }
+
+    if (
+      presentation.phase === "display"
+      && now >= presentation.phaseUntil
+    ) {
+      presentation.current = null;
+      presentation.phase = "gap";
+
+      presentation.phaseUntil = (
+        now
+        + coachTiming(
+            channel,
+            current
+          ).gapMs
+      );
+    }
+
+    if (
+      presentation.phase === "gap"
+      && now >= presentation.phaseUntil
+    ) {
+      presentation.phase = "idle";
+      presentation.phaseUntil = 0;
+    }
+
+    if (
+      presentation.phase === "idle"
+      && !presentation.current
+      && presentation.queue.length
+    ) {
+      const next = (
+        presentation.queue.shift()
+      );
+
+      presentation.current = next;
+      presentation.phase = "display";
+
+      presentation.phaseUntil = (
+        now
+        + coachTiming(
+            channel,
+            current,
+            next
+          ).displayMs
+      );
+    }
+  }
+
+  function renderCoachEmpty(
+    container,
+    title,
+    description
+  ) {
+    const empty = document.createElement(
+      "div"
+    );
+
+    empty.className = (
+      "coach-empty"
+    );
+
+    const strong = document.createElement(
+      "strong"
+    );
+
+    strong.textContent = (
+      title
+    );
+
+    const paragraph = document.createElement(
+      "p"
+    );
+
+    paragraph.textContent = (
+      description
+    );
+
+    empty.append(
+      strong,
+      paragraph
+    );
+
+    container.replaceChildren(
+      empty
+    );
+  }
+
+  function renderCoachSlot(
+    channel,
+    containerId,
+    current,
+    idleTitle,
+    idleDescription
   ) {
     const container = $(
       containerId
     );
 
-    if (!container) {
+    const presentation = (
+      coachPresentation[
+        channel
+      ]
+    );
+
+    if (
+      !container
+      || !presentation
+    ) {
       return;
     }
 
-    const useful = (
-      Array.isArray(messages)
-      ? messages.filter(
-          (item) => messageText(item)
-        )
-      : []
+    container.classList.toggle(
+      "coach-preview-is-gap",
+      presentation.phase === "gap"
     );
 
-    const visible = useful.slice(
-      -limit
+    container.classList.toggle(
+      "coach-preview-is-single",
+      presentation.phase === "display"
     );
 
-    if (!visible.length) {
-      const empty = document.createElement(
-        "div"
-      );
-
-      empty.className = (
-        "coach-empty"
-      );
-
-      const strong = document.createElement(
-        "strong"
-      );
-
-      strong.textContent = (
-        emptyTitle
-      );
-
-      const paragraph = document.createElement(
-        "p"
-      );
-
-      paragraph.textContent = (
-        emptyDescription
-      );
-
-      empty.append(
-        strong,
-        paragraph
-      );
-
+    if (
+      presentation.phase === "display"
+      && presentation.current
+    ) {
       container.replaceChildren(
-        empty
+        createCoachMessage(
+          presentation.current
+        )
       );
 
       return;
     }
 
-    container.replaceChildren(
-      ...visible.map(
-        createCoachMessage
-      )
+    if (
+      presentation.phase === "gap"
+    ) {
+      // Intervalo visual proposital entre uma orientacao e outra.
+      // O card permanece no lugar, mas a mensagem some.
+      container.replaceChildren();
+      return;
+    }
+
+    renderCoachEmpty(
+      container,
+      idleTitle,
+      idleDescription
     );
   }
 
   function renderCoaches(
     current
   ) {
-    const liveMessages = (
+    const monitoring = Boolean(
       current?.monitorando
+    );
+
+    const liveMessages = (
+      monitoring
       ? current?.coach || []
       : []
     );
 
-    renderCoachList(
-      "live-coach-preview",
+    ingestCoachMessages(
+      "live",
       liveMessages,
-      current?.monitorando
-        ? "Aguardando sinais relevantes"
-        : "Aguardando sinais da live",
-      current?.monitorando
-        ? "O Live Coach esta monitorando a transmissao."
-        : "As orientacoes aparecerao aqui quando o monitoramento estiver ativo.",
-      3
+      current
     );
 
     const salesActive = Boolean(
@@ -2143,19 +2570,138 @@
       !salesActive
     );
 
+    ingestCoachMessages(
+      "sales",
+      (
+        monitoring
+        && salesActive
+        ? current?.sales_coach?.messages
+          || []
+        : []
+      ),
+      current
+    );
+
+    const now = Date.now();
+
+    advanceCoachPresentation(
+      "live",
+      current,
+      now
+    );
+
+    advanceCoachPresentation(
+      "sales",
+      current,
+      now
+    );
+
+    renderCoachSlot(
+      "live",
+      "live-coach-preview",
+      current,
+      monitoring
+        ? "Aguardando sinais relevantes"
+        : "Aguardando sinais da live",
+      monitoring
+        ? "O Live Coach esta monitorando a transmissao."
+        : "As orientacoes aparecerao aqui quando o monitoramento estiver ativo."
+    );
+
     if (salesActive) {
-      renderCoachList(
+      renderCoachSlot(
+        "sales",
         "sales-coach-preview",
-        current?.monitorando
-          ? current?.sales_coach?.messages || []
-          : [],
-        current?.monitorando
+        current,
+        monitoring
           ? "Aguardando sinais comerciais"
           : "Sales Coach configurado",
-        current?.monitorando
-          ? "O Sales Coach esta analisando os comentarios e o contexto do produto."
-          : "Inicie a live para receber orientacoes comerciais.",
-        3
+        monitoring
+          ? (
+              salesPresentationMode(
+                current
+              ) === "maximo"
+              ? "Modo Maximo ativo. Aguardando o proximo sinal comercial."
+              : "Modo Leve ativo. Aguardando o proximo sinal comercial."
+            )
+          : "Inicie a live para receber orientacoes comerciais."
+      );
+    }
+  }
+
+  function tickCoachPresentations() {
+    if (!state) {
+      return;
+    }
+
+    const now = Date.now();
+
+    const beforeLive = (
+      coachPresentation.live.phase
+      + ":"
+      + coachPresentation.live.phaseUntil
+      + ":"
+      + coachMessageKey(
+          coachPresentation.live.current
+          || "",
+          0
+        )
+    );
+
+    const beforeSales = (
+      coachPresentation.sales.phase
+      + ":"
+      + coachPresentation.sales.phaseUntil
+      + ":"
+      + coachMessageKey(
+          coachPresentation.sales.current
+          || "",
+          0
+        )
+    );
+
+    advanceCoachPresentation(
+      "live",
+      state,
+      now
+    );
+
+    advanceCoachPresentation(
+      "sales",
+      state,
+      now
+    );
+
+    const afterLive = (
+      coachPresentation.live.phase
+      + ":"
+      + coachPresentation.live.phaseUntil
+      + ":"
+      + coachMessageKey(
+          coachPresentation.live.current
+          || "",
+          0
+        )
+    );
+
+    const afterSales = (
+      coachPresentation.sales.phase
+      + ":"
+      + coachPresentation.sales.phaseUntil
+      + ":"
+      + coachMessageKey(
+          coachPresentation.sales.current
+          || "",
+          0
+        )
+    );
+
+    if (
+      beforeLive !== afterLive
+      || beforeSales !== afterSales
+    ) {
+      renderCoaches(
+        state
       );
     }
   }
@@ -3724,6 +4270,11 @@
     setInterval(
       paintTimer,
       500
+    );
+
+    setInterval(
+      tickCoachPresentations,
+      250
     );
   }
 
