@@ -2,7 +2,7 @@
   "use strict";
 
   // =========================================================
-  // AGCN LIVE - INTERFACE V9.3
+  // AGCN LIVE - INTERFACE V9.4
   // Frontend real para Runtime/Server V2.1.
   // =========================================================
 
@@ -26,6 +26,8 @@
     liveDraft: "agcn-live-config-v1",
     audioLive: "agcn-live-audio-live-v1",
     audioSales: "agcn-live-audio-sales-v1",
+    liveCoachAlertMode:
+      "agcn-live-coach-alert-mode-v1",
   };
 
   const ROUTES = {
@@ -112,6 +114,31 @@
   let timerRunning = false;
 
   let toastTimer = null;
+
+  // =========================================================
+  // LIVE COACH ALERT LEVEL
+  // =========================================================
+
+  const LIVE_COACH_ALERT_MODES = {
+    all: {
+      label: "Todos",
+      description:
+        "Mostra todas as perguntas e situacoes uteis distintas identificadas pelo Live Coach.",
+    },
+    high: {
+      label: "Prioridade alta",
+      description:
+        "Mostra situacoes de maior impacto, como intencao de compra, objecoes, repeticao e pos-compra.",
+    },
+    essential: {
+      label: "Essenciais",
+      description:
+        "Mostra apenas sinais muito fortes ou urgentes que realmente exigem atencao.",
+    },
+  };
+
+  let liveCoachAlertPreference = "all";
+  let liveCoachAlertPending = false;
 
   // =========================================================
   // COACH PRESENTATION CADENCE
@@ -1355,6 +1382,276 @@
         );
       }
     );
+  }
+
+  // =========================================================
+  // LIVE COACH ALERT LEVEL HELPERS
+  // =========================================================
+
+  function normalizeLiveCoachAlertMode(
+    value
+  ) {
+    const normalized = (
+      normalizeText(
+        value
+      )
+      .toLowerCase()
+      .replace(
+        /\s+/g,
+        "_"
+      )
+    );
+
+    if (
+      normalized === "high"
+      || normalized === "alta"
+      || normalized
+        === "prioridade_alta"
+      || normalized
+        === "priority_high"
+    ) {
+      return "high";
+    }
+
+    if (
+      normalized === "essential"
+      || normalized === "essencial"
+      || normalized === "essenciais"
+    ) {
+      return "essential";
+    }
+
+    return "all";
+  }
+
+  function currentLiveCoachAlertMode() {
+    const checked = document.querySelector(
+      'input[name="live_coach_alert_mode"]:checked'
+    );
+
+    return normalizeLiveCoachAlertMode(
+      checked?.value
+      || liveCoachAlertPreference
+      || "all"
+    );
+  }
+
+  function liveCoachAlertInfo(
+    mode
+  ) {
+    const canonical = (
+      normalizeLiveCoachAlertMode(
+        mode
+      )
+    );
+
+    return (
+      LIVE_COACH_ALERT_MODES[
+        canonical
+      ]
+      || LIVE_COACH_ALERT_MODES.all
+    );
+  }
+
+  function renderLiveCoachAlertMode() {
+    const mode = (
+      normalizeLiveCoachAlertMode(
+        liveCoachAlertPreference
+      )
+    );
+
+    $$(
+      'input[name="live_coach_alert_mode"]'
+    ).forEach(
+      (radio) => {
+        radio.checked = (
+          radio.value === mode
+        );
+
+        radio.disabled = (
+          liveCoachAlertPending
+        );
+
+        const option = (
+          radio.closest(
+            ".alert-level-option"
+          )
+        );
+
+        option?.classList.toggle(
+          "is-selected",
+          radio.checked
+        );
+
+        option?.classList.toggle(
+          "is-pending",
+          Boolean(
+            liveCoachAlertPending
+            && radio.checked
+          )
+        );
+      }
+    );
+
+    setText(
+      "live-coach-alert-description",
+      liveCoachAlertInfo(
+        mode
+      ).description
+    );
+  }
+
+  function persistLiveCoachAlertMode(
+    mode
+  ) {
+    liveCoachAlertPreference = (
+      normalizeLiveCoachAlertMode(
+        mode
+      )
+    );
+
+    storageSet(
+      localStorage,
+      STORAGE.liveCoachAlertMode,
+      liveCoachAlertPreference
+    );
+
+    renderLiveCoachAlertMode();
+
+    return liveCoachAlertPreference;
+  }
+
+  function hydrateLiveCoachAlertPreference() {
+    liveCoachAlertPreference = (
+      normalizeLiveCoachAlertMode(
+        storageGet(
+          localStorage,
+          STORAGE.liveCoachAlertMode,
+          "all"
+        )
+      )
+    );
+
+    renderLiveCoachAlertMode();
+  }
+
+  async function applyLiveCoachAlertMode(
+    mode,
+    {
+      silent = false,
+    } = {}
+  ) {
+    const previous = (
+      liveCoachAlertPreference
+    );
+
+    const canonical = (
+      persistLiveCoachAlertMode(
+        mode
+      )
+    );
+
+    if (liveCoachAlertPending) {
+      return null;
+    }
+
+    liveCoachAlertPending = true;
+    renderLiveCoachAlertMode();
+
+    try {
+      const result = await api(
+        "/api/alert-mode",
+        {
+          mode:
+            canonical,
+        }
+      );
+
+      if (result?.state) {
+        applyState(
+          result.state
+        );
+      }
+
+      const backendMode = (
+        result?.result?.mode
+        || result?.mode
+        || result?.state?.coach_mode?.value
+        || canonical
+      );
+
+      persistLiveCoachAlertMode(
+        backendMode
+      );
+
+      if (!silent) {
+        showToast(
+          "Live Coach: "
+          + liveCoachAlertInfo(
+              backendMode
+            ).label
+          + ".",
+          "success"
+        );
+      }
+
+      return result;
+    } catch (error) {
+      persistLiveCoachAlertMode(
+        previous
+      );
+
+      if (!silent) {
+        showToast(
+          error.message,
+          "error"
+        );
+      }
+
+      throw error;
+    } finally {
+      liveCoachAlertPending = false;
+      renderLiveCoachAlertMode();
+    }
+  }
+
+  async function syncSavedLiveCoachAlertMode() {
+    const desired = (
+      normalizeLiveCoachAlertMode(
+        liveCoachAlertPreference
+      )
+    );
+
+    const backend = (
+      normalizeLiveCoachAlertMode(
+        state?.coach_mode?.value
+        || "all"
+      )
+    );
+
+    if (desired === backend) {
+      renderLiveCoachAlertMode();
+      return;
+    }
+
+    try {
+      await applyLiveCoachAlertMode(
+        desired,
+        {
+          silent:
+            true,
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "Nivel de alertas do Live Coach nao sincronizado:",
+        error
+      );
+
+      persistLiveCoachAlertMode(
+        backend
+      );
+    }
   }
 
   // =========================================================
@@ -3937,6 +4234,8 @@
 
     renderSalesSection();
 
+    renderLiveCoachAlertMode();
+
     paintTimer();
   }
 
@@ -5203,6 +5502,31 @@
       }
     );
 
+    $$(
+      'input[name="live_coach_alert_mode"]'
+    ).forEach(
+      (radio) => {
+        radio.addEventListener(
+          "change",
+          async () => {
+            if (!radio.checked) {
+              return;
+            }
+
+            clearConfigureFeedback();
+
+            try {
+              await applyLiveCoachAlertMode(
+                radio.value
+              );
+            } catch {
+              // O feedback ja foi exibido pela funcao de sincronizacao.
+            }
+          }
+        );
+      }
+    );
+
     $("live-config-form")?.addEventListener(
       "submit",
       submitConfiguration
@@ -5237,6 +5561,7 @@
 
     ensureCoachAudioControls();
     hydrateCoachAudioPreferences();
+    hydrateLiveCoachAlertPreference();
 
     bindNavigation();
     bindDialogs();
@@ -5272,6 +5597,8 @@
       applyState(
         initial
       );
+
+      await syncSavedLiveCoachAlertMode();
 
       await hydrateProductContext();
 
