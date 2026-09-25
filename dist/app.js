@@ -2,7 +2,7 @@
   "use strict";
 
   // =========================================================
-  // AGCN LIVE - INTERFACE V9.4
+  // AGCN LIVE - INTERFACE V9.5 PREMIUM REDESIGN
   // Frontend real para Runtime/Server V2.1.
   // =========================================================
 
@@ -3052,7 +3052,7 @@
         );
 
         startText.textContent = (
-          "\u2713 Live ativa"
+          "\u2713 MONITORAMENTO ATIVO"
         );
 
         setHidden(
@@ -3090,7 +3090,7 @@
         );
 
         startText.textContent = (
-          "ATIVAR LIVE"
+          "INICIAR MONITORAMENTO"
         );
 
         setHidden(
@@ -3193,7 +3193,7 @@
 
       setText(
         "metric-four-note",
-        "Observados na live"
+        "Novos seguidores da live"
       );
     } else {
       setText(
@@ -3210,7 +3210,7 @@
 
       setText(
         "metric-four-note",
-        "Quando disponivel"
+        "Produtos na live"
       );
     }
   }
