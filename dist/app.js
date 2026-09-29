@@ -7,11 +7,12 @@
     monitoring:false, presenter:"stopped", startedAt:null, timer:null, autoTimer:null,
     viewers:0, likes:0, shares:0, comments:[], queue:[], currentSpeech:null,
     speechTick:null, speechEnd:null, salesIndex:0, interruptedTopic:null,
+    reactiveStreak:0, productWindowUntil:0,
     product:{
       name:"Fone de Ouvido Bluetooth TWS", price:"129,90", regularPrice:"199,90",
       discount:"35% OFF", compatibility:"iPhone e Android",
       battery:"até 6 horas de uso por carga", warranty:"", shipping:"",
-      description:"Som de alta qualidade, bateria de longa duração e compatível com iPhone e Android.",
+      descriptionPoints:["Som de alta qualidade","Bateria de longa duração","Compatível com iPhone e Android"],
       benefits:"Áudio claro; sem fio; estojo compacto; fácil pareamento; confortável para uso diário"
     }
   };
@@ -53,44 +54,92 @@
   function responseFor(comment,decision){
     const name=$("call-name").checked ? comment.user+", " : "";
     const p=state.product;
+    const firstBenefit=(p.benefits||"").split(/[;\n|]+/).map(x=>x.trim()).find(Boolean);
     switch(decision.topic){
-      case "price": return p.price ? `${name}o valor cadastrado agora é R$ ${p.price}. E eu já volto ao ponto que eu estava te mostrando porque esse produto tem outros detalhes importantes.` : `${name}eu não tenho um preço confirmado cadastrado agora, então não vou inventar esse valor.`;
-      case "compatibility": return p.compatibility ? `${name}sim, a compatibilidade cadastrada é ${p.compatibility}. E seguindo daqui, deixa eu continuar te mostrando o produto.` : `${name}essa compatibilidade não está confirmada no cadastro, então eu prefiro não afirmar.`;
-      case "battery": return p.battery ? `${name}a informação cadastrada de bateria é ${p.battery}. Agora eu continuo do ponto que estava na apresentação.` : `${name}a duração da bateria não está confirmada no cadastro.`;
-      case "warranty": return p.warranty ? `${name}a garantia cadastrada é ${p.warranty}. E voltando ao produto...` : `${name}eu não tenho uma garantia confirmada cadastrada agora, então não vou inventar essa informação.`;
-      case "shipping": return p.shipping ? `${name}a informação cadastrada de entrega é: ${p.shipping}. E seguindo com a apresentação...` : `${name}frete e entrega não estão confirmados no cadastro agora.`;
-      case "buy": return `${name}boa! Se você já decidiu comprar, confira o produto fixado ou o link disponível na LIVE. E eu sigo te mostrando os pontos principais antes de você fechar.`;
-      case "benefit": return `${name}o principal aqui é o conjunto de benefícios cadastrados: ${p.benefits || p.description}. E eu continuo te mostrando onde isso faz diferença no uso.`;
-      default: return `${name}vi seu comentário. Vou manter a apresentação andando e já sigo com os principais pontos do produto.`;
+      case "price":
+        return p.price ? `${name}hoje ele tá por R$ ${p.price}${p.discount ? ", com "+p.discount : ""}.` : null;
+      case "compatibility":
+        return p.compatibility ? `${name}serve sim. ${p.compatibility}.` : null;
+      case "battery":
+        return p.battery ? `${name}a bateria dele dura ${p.battery}.` : null;
+      case "warranty":
+        return p.warranty ? `${name}tem sim, garantia de ${p.warranty}.` : null;
+      case "shipping":
+        return p.shipping ? `${name}${p.shipping}.` : null;
+      case "buy":
+        return `${name}boa! Se quiser pegar, confere o produto fixado na LIVE.`;
+      case "benefit":
+        return firstBenefit ? `${name}${firstBenefit}.` : null;
+      default:
+        return null;
     }
   }
 
   function proactiveText(topic){
     const p=state.product;
-    if(topic==="battery") return p.battery ? `Agora olha a bateria: o cadastro informa ${p.battery}. Isso é um ponto importante para quem quer usar no dia a dia sem ficar preso ao carregador.` : `Sobre bateria, eu não tenho uma duração confirmada cadastrada, então vou seguir pelos benefícios que estão validados.`;
-    if(topic==="compatibility") return p.compatibility ? `Em compatibilidade, ele está cadastrado para ${p.compatibility}. Então esse é um ponto fácil de entender antes da compra.` : `Compatibilidade ainda não está confirmada no cadastro; eu não vou inventar esse dado.`;
-    if(topic==="value") return p.price ? `Falando de valor, o preço atual cadastrado é R$ ${p.price}${p.discount ? ", com "+p.discount : ""}. Eu vou continuar destacando por que esse produto faz sentido.` : `O preço não está confirmado no cadastro agora, então eu sigo falando dos benefícios reais do produto.`;
-    if(topic==="cta") return `Se esse ${p.name} faz sentido para você, aproveita para conferir o produto na LIVE. E se tiver dúvida, manda nos comentários que eu respondo e continuo a apresentação.`;
-    return `Olha esse ${p.name}: ${p.description} Entre os benefícios cadastrados estão ${p.benefits || "os pontos principais informados pelo vendedor"}.`;
+    const points=p.descriptionPoints||[];
+    const point=points.length ? points[state.salesIndex % points.length] : "";
+    const firstBenefit=(p.benefits||"").split(/[;\n|]+/).map(x=>x.trim()).find(Boolean) || "";
+    if(topic==="battery" && p.battery) return `E olha a bateria dele: ${p.battery}. Dá pra usar bem tranquilo no dia a dia.`;
+    if(topic==="compatibility" && p.compatibility) return `Outra coisa boa: ele funciona com ${p.compatibility}. Então é bem prático pra usar no dia a dia.`;
+    if(topic==="value" && p.price) return `Hoje ele tá por R$ ${p.price}${p.discount ? ", com "+p.discount : ""}. Vale olhar com carinho essa oferta.`;
+    if(topic==="cta") return `Se curtiu o ${p.name}, dá uma olhada no produto fixado aí na LIVE.`;
+    if(point) return `Olha esse detalhe do ${p.name}: ${point}.`;
+    if(firstBenefit) return `Uma coisa legal nele é ${firstBenefit}.`;
+    return `Olha só o ${p.name}. Vou te mostrando os principais pontos dele por aqui.`;
   }
 
   function enqueueComment(user,text){
-    const c={id:Date.now()+Math.random(),user:user||"Visitante",text,at:Date.now(),decision:classify(text)};
-    state.comments.unshift(c); state.comments=state.comments.slice(0,30);
-    state.queue.push(c); state.queue.sort((a,b)=>b.decision.priority-a.decision.priority);
-    renderComments(); renderQueue(); updateCPM();
+    const item={id:Date.now()+Math.random(),user:user||"Visitante",text,at:Date.now(),decision:classify(text)};
+    state.comments.unshift(item); state.comments=state.comments.slice(0,30);
+
+    // Pergunta sem resposta conhecida aparece no chat, mas não vira fala.
+    const answer=responseFor(item,item.decision);
+    item.ignored=!answer;
+    if(answer){
+      state.queue.push(item);
+      state.queue.sort((a,b)=>b.decision.priority-a.decision.priority);
+      if(state.queue.length>40) state.queue=state.queue.slice(0,40);
+    }
+
+    renderComments(); renderQueue(); updateCPM(); renderCadence();
     if(state.presenter==="running" && $("auto-replies").checked) processQueue();
+  }
+
+  function inProductWindow(){
+    if(state.productWindowUntil && Date.now()>=state.productWindowUntil){
+      state.productWindowUntil=0;
+      state.reactiveStreak=0;
+    }
+    return state.productWindowUntil>Date.now();
+  }
+
+  function startProductWindow(){
+    state.productWindowUntil=Date.now()+30000;
+    renderCadence();
   }
 
   function processQueue(){
     if(state.currentSpeech || state.presenter!=="running") return;
-    const next=state.queue.shift();
-    if(next && ($("prioritize-questions").checked || next.decision.priority>=80)){
-      state.interruptedTopic = topics[state.salesIndex % topics.length].key;
-      renderQueue();
-      speak(responseFor(next,next.decision),{type:"comment",topic:next.decision.topic,returnTo:state.interruptedTopic});
+
+    if(inProductWindow()){
+      proactive();
       return;
     }
+
+    const next=state.queue.shift();
+    if(next && ($("prioritize-questions").checked || next.decision.priority>=80)){
+      const answer=responseFor(next,next.decision);
+      renderQueue();
+      if(answer){
+        state.interruptedTopic=topics[state.salesIndex % topics.length].key;
+        state.reactiveStreak+=1;
+        speak(answer,{type:"comment",topic:next.decision.topic,returnTo:state.interruptedTopic});
+        renderCadence();
+        return;
+      }
+    }
+
     proactive();
   }
 
@@ -99,7 +148,25 @@
     let topic;
     if(state.interruptedTopic){ topic=state.interruptedTopic; state.interruptedTopic=null; }
     else { topic=topics[state.salesIndex % topics.length].key; state.salesIndex++; }
+    if(!inProductWindow()) state.reactiveStreak=0;
     speak(proactiveText(topic),{type:"proactive",topic});
+    renderCadence();
+  }
+
+  function renderCadence(){
+    const mode=$("cadence-mode");
+    const countdown=$("cadence-countdown");
+    if(!mode || !countdown) return;
+    if(inProductWindow()){
+      const sec=Math.max(0,Math.ceil((state.productWindowUntil-Date.now())/1000));
+      mode.textContent="Modo produto";
+      countdown.style.display="block";
+      countdown.textContent=`${sec}s sem responder comentários`;
+    }else{
+      mode.textContent=`Modo interativo · ${state.reactiveStreak}/3 respostas`;
+      countdown.style.display="none";
+      countdown.textContent="";
+    }
   }
 
   function speak(text,meta={}){
@@ -121,7 +188,11 @@
       $("speech-timer").textContent=`${fmtClock(elapsed/1000)} / ${fmtClock(state.currentSpeech.duration/1000)}`;
     },120);
     state.speechEnd=setTimeout(()=>{
+      const finishedMeta=state.currentSpeech ? state.currentSpeech.meta : {};
       clearInterval(state.speechTick); state.currentSpeech=null; $("speech-progress").style.width="0%"; $("on-air-badge").textContent="silêncio"; $("on-air-badge").className="badge neutral";
+      if(finishedMeta.type==="comment" && state.reactiveStreak>=3 && !inProductWindow()){
+        startProductWindow();
+      }
       setTimeout(processQueue,450);
     },seconds*1000);
   }
@@ -129,7 +200,7 @@
   function renderComments(){
     const root=$("comments-list");
     if(!state.comments.length){root.className="comments-list empty-state";root.textContent="Os comentários aparecerão aqui.";return;}
-    root.className="comments-list"; root.innerHTML=state.comments.map(c=>`<div class="comment-item"><b>${escapeHTML(c.user)}</b><p>${escapeHTML(c.text)}</p><small class="muted">${c.decision.intent}</small></div>`).join("");
+    root.className="comments-list"; root.innerHTML=state.comments.map(c=>`<div class="comment-item"><b>${escapeHTML(c.user)}</b><p>${escapeHTML(c.text)}</p><small class="muted">${c.ignored ? "ignorado — sem resposta conhecida" : c.decision.intent}</small></div>`).join("");
   }
   function renderQueue(){
     const root=$("queue-list");
@@ -152,7 +223,7 @@
     state.viewers += Math.floor(Math.random()*8); state.likes += Math.floor(Math.random()*40); if(Math.random()<.25) state.shares++;
     $("metric-viewers").textContent=fmt.format(state.viewers); $("metric-likes").textContent=fmt.format(state.likes); $("metric-shares").textContent=fmt.format(state.shares);
     if(state.startedAt) $("metric-time").textContent=fmtLive((Date.now()-state.startedAt)/1000);
-    updateCPM();
+    updateCPM(); renderCadence();
   }
 
   $("monitor-btn").onclick=()=>{state.monitoring=true;if(!state.startedAt)state.startedAt=Date.now();$("connection-label").textContent="Monitorando LIVE simulada";toast("Monitoramento iniciado");};
@@ -165,9 +236,41 @@
   $("comment-text").addEventListener("keydown",e=>{if(e.key==="Enter")$("send-comment").click();});
   $$("[data-comment]").forEach(b=>b.onclick=()=>enqueueComment($("comment-user").value.trim()||"Visitante",b.dataset.comment));
 
+  function descriptionPointValues(){
+    return $(".description-point").map(x=>x.value.trim()).filter(Boolean);
+  }
+
+  function addDescriptionPoint(value=""){
+    const row=document.createElement("div");
+    row.className="description-row";
+    const input=document.createElement("input");
+    input.className="description-point";
+    input.placeholder="Ex.: bateria de até 6 dias";
+    input.value=value;
+    const remove=document.createElement("button");
+    remove.type="button";
+    remove.className="secondary remove-description";
+    remove.textContent="×";
+    row.append(input,remove);
+    $("description-points").appendChild(row);
+  }
+
+  $("add-description").onclick=()=>addDescriptionPoint();
+  $("description-points").addEventListener("click",event=>{
+    const button=event.target.closest(".remove-description");
+    if(!button) return;
+    const rows=$(".description-row");
+    if(rows.length===1){
+      rows[0].querySelector(".description-point").value="";
+      return;
+    }
+    button.closest(".description-row").remove();
+  });
+
   $("save-product").onclick=()=>{
-    state.product={name:$("product-name").value.trim(),price:$("product-price").value.trim(),regularPrice:$("product-regular-price").value.trim(),discount:$("product-discount").value.trim(),compatibility:$("product-compatibility").value.trim(),battery:$("product-battery").value.trim(),warranty:$("product-warranty").value.trim(),shipping:$("product-shipping").value.trim(),description:$("product-description").value.trim(),benefits:$("product-benefits").value.trim()};
-    $("active-product-name").textContent=state.product.name;$("active-product-desc").textContent=state.product.description;$("active-product-price").textContent=state.product.price?"R$ "+state.product.price:"—";$("active-product-discount").textContent=state.product.discount||"";$("product-save-status").textContent="Produto salvo e ativado.";toast("Produto ativo atualizado");
+    const points=descriptionPointValues();
+    state.product={name:$("product-name").value.trim(),price:$("product-price").value.trim(),regularPrice:$("product-regular-price").value.trim(),discount:$("product-discount").value.trim(),compatibility:$("product-compatibility").value.trim(),battery:$("product-battery").value.trim(),warranty:$("product-warranty").value.trim(),shipping:$("product-shipping").value.trim(),descriptionPoints:points,benefits:$("product-benefits").value.trim()};
+    $("active-product-name").textContent=state.product.name;$("active-product-desc").textContent=points.slice(0,2).join(" • ")||"Sem descrição";$("active-product-price").textContent=state.product.price?"R$ "+state.product.price:"—";$("active-product-discount").textContent=state.product.discount||"";$("product-save-status").textContent="Produto salvo e ativado.";toast("Produto ativo atualizado");
   };
 
   function refreshVoice(){
@@ -185,5 +288,5 @@
   $("auto-comments").onchange=manageAutoComments;$("auto-comment-interval").onchange=manageAutoComments;
   $("reset-lab").onclick=()=>location.reload();
 
-  setInterval(updateMetrics,1000); renderComments();renderQueue();renderTopics();refreshVoice();
+  setInterval(updateMetrics,1000); renderComments();renderQueue();renderTopics();refreshVoice();renderCadence();
 })();
