@@ -73,6 +73,12 @@
             </div>
             <div class="voice-mini">
               <div>
+                <small id="cadence-mode">Modo interativo · 0/3 respostas</small>
+                <b id="cadence-countdown" style="display:none"></b>
+              </div>
+            </div>
+            <div class="voice-mini">
+              <div>
                 <small>Voz do apresentador</small>
                 <b id="voice-summary">Vivian — Feminina HQ</b>
                 <span id="voice-meta">Qwen3-TTS 1.7B · 1,28x · simulado no navegador</span>
@@ -140,7 +146,23 @@
             <label>Bateria<input id="product-battery" value="até 6 horas de uso por carga"></label>
             <label>Garantia<input id="product-warranty" value=""></label>
             <label>Frete/entrega<input id="product-shipping" value=""></label>
-            <label class="full">Descrição<textarea id="product-description">Som de alta qualidade, bateria de longa duração e compatível com iPhone e Android.</textarea></label>
+            <div class="full">
+              <div class="field-head"><span>Descrição por tópicos</span><button type="button" id="add-description" class="secondary">+ Adicionar descrição</button></div>
+              <div id="description-points" class="description-list">
+                <div class="description-row">
+                  <input class="description-point" value="Som de alta qualidade">
+                  <button type="button" class="secondary remove-description">×</button>
+                </div>
+                <div class="description-row">
+                  <input class="description-point" value="Bateria de longa duração">
+                  <button type="button" class="secondary remove-description">×</button>
+                </div>
+                <div class="description-row">
+                  <input class="description-point" value="Compatível com iPhone e Android">
+                  <button type="button" class="secondary remove-description">×</button>
+                </div>
+              </div>
+            </div>
             <label class="full">Benefícios<textarea id="product-benefits">Áudio claro; sem fio; estojo compacto; fácil pareamento; confortável para uso diário</textarea></label>
           </div>
           <div class="row gap"><button id="save-product" class="primary">Salvar e usar este produto</button><span id="product-save-status" class="muted"></span></div>
