@@ -167,8 +167,36 @@
                 </div>
               </div>
             </div>
-            <label class="full">Benefícios<textarea id="product-benefits">Áudio claro; sem fio; estojo compacto; fácil pareamento; confortável para uso diário</textarea></label>
-            <label class="full">Problemas que resolve<textarea id="product-problems">Ficar preso a fios; dificuldade para ouvir áudio com liberdade no dia a dia</textarea></label>
+            <div class="full">
+              <div class="field-head"><span>Benefícios por tópicos</span><button type="button" id="add-benefit" class="secondary">+ Adicionar benefício</button></div>
+              <div id="benefit-points" class="description-list">
+                <div class="description-row benefit-row">
+                  <input class="benefit-point" value="Áudio claro">
+                  <button type="button" class="secondary remove-benefit">×</button>
+                </div>
+                <div class="description-row benefit-row">
+                  <input class="benefit-point" value="Sem fio">
+                  <button type="button" class="secondary remove-benefit">×</button>
+                </div>
+                <div class="description-row benefit-row">
+                  <input class="benefit-point" value="Confortável para uso diário">
+                  <button type="button" class="secondary remove-benefit">×</button>
+                </div>
+              </div>
+            </div>
+            <div class="full">
+              <div class="field-head"><span>Problemas que resolve por tópicos</span><button type="button" id="add-problem" class="secondary">+ Adicionar problema que resolve</button></div>
+              <div id="problem-points" class="description-list">
+                <div class="description-row problem-row">
+                  <input class="problem-point" value="Ficar preso a fios">
+                  <button type="button" class="secondary remove-problem">×</button>
+                </div>
+                <div class="description-row problem-row">
+                  <input class="problem-point" value="Dificuldade para ouvir áudio com liberdade no dia a dia">
+                  <button type="button" class="secondary remove-problem">×</button>
+                </div>
+              </div>
+            </div>
             <label class="full">Itens inclusos<textarea id="product-included">Fone TWS; estojo de carregamento; cabo de carregamento</textarea></label>
           </div>
           <div class="row gap"><button id="save-product" class="primary">Salvar e usar este produto</button><span id="product-save-status" class="muted"></span></div>
