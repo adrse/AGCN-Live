@@ -146,6 +146,10 @@
             <label>Bateria<input id="product-battery" value="até 6 horas de uso por carga"></label>
             <label>Garantia<input id="product-warranty" value=""></label>
             <label>Frete/entrega<input id="product-shipping" value=""></label>
+            <label>Estoque real disponível<input id="product-stock" type="number" min="0" value="7"></label>
+            <label>Oferta da LIVE<input id="product-live-offer-text" value="Oferta exclusiva da LIVE"></label>
+            <label class="full"><input id="product-live-offer" type="checkbox" checked> Oferta ativa nesta LIVE (somente se for real)</label>
+            <label class="full">Urgência real / prazo promocional<input id="product-promotion-note" placeholder="Ex.: oferta relâmpago termina às 22h"></label>
             <div class="full">
               <div class="field-head"><span>Descrição por tópicos</span><button type="button" id="add-description" class="secondary">+ Adicionar descrição</button></div>
               <div id="description-points" class="description-list">
@@ -164,6 +168,8 @@
               </div>
             </div>
             <label class="full">Benefícios<textarea id="product-benefits">Áudio claro; sem fio; estojo compacto; fácil pareamento; confortável para uso diário</textarea></label>
+            <label class="full">Problemas que resolve<textarea id="product-problems">Ficar preso a fios; dificuldade para ouvir áudio com liberdade no dia a dia</textarea></label>
+            <label class="full">Itens inclusos<textarea id="product-included">Fone TWS; estojo de carregamento; cabo de carregamento</textarea></label>
           </div>
           <div class="row gap"><button id="save-product" class="primary">Salvar e usar este produto</button><span id="product-save-status" class="muted"></span></div>
         </article>
