@@ -387,39 +387,85 @@
   $("comment-text").addEventListener("keydown",e=>{if(e.key==="Enter")$("send-comment").click();});
   $$("[data-comment]").forEach(b=>b.onclick=()=>enqueueComment($("comment-user").value.trim()||"Visitante",b.dataset.comment));
 
-  function descriptionPointValues(){
-    return $(".description-point").map(x=>x.value.trim()).filter(Boolean);
+  function pointValues(selector){
+    return $$(selector).map(x=>x.value.trim()).filter(Boolean);
   }
 
-  function addDescriptionPoint(value=""){
+  function addPointRow({
+    containerId,
+    inputClass,
+    removeClass,
+    placeholder,
+    value=""
+  }){
     const row=document.createElement("div");
     row.className="description-row";
     const input=document.createElement("input");
-    input.className="description-point";
-    input.placeholder="Ex.: bateria de até 6 dias";
+    input.className=inputClass;
+    input.placeholder=placeholder;
     input.value=value;
     const remove=document.createElement("button");
     remove.type="button";
-    remove.className="secondary remove-description";
+    remove.className=`secondary ${removeClass}`;
     remove.textContent="×";
     row.append(input,remove);
-    $("description-points").appendChild(row);
+    $(containerId).appendChild(row);
   }
 
-  $("add-description").onclick=()=>addDescriptionPoint();
-  $("description-points").addEventListener("click",event=>{
-    const button=event.target.closest(".remove-description");
-    if(!button) return;
-    const rows=$(".description-row");
-    if(rows.length===1){
-      rows[0].querySelector(".description-point").value="";
-      return;
-    }
-    button.closest(".description-row").remove();
+  function bindPointEditor({
+    containerId,
+    addButtonId,
+    inputClass,
+    removeClass,
+    placeholder
+  }){
+    $(addButtonId).onclick=()=>addPointRow({
+      containerId,
+      inputClass,
+      removeClass,
+      placeholder
+    });
+
+    $(containerId).addEventListener("click",event=>{
+      const button=event.target.closest("."+removeClass);
+      if(!button) return;
+      const container=$(containerId);
+      const rows=Array.from(container.querySelectorAll(".description-row"));
+      if(rows.length===1){
+        const input=rows[0].querySelector("."+inputClass);
+        if(input) input.value="";
+        return;
+      }
+      button.closest(".description-row").remove();
+    });
+  }
+
+  bindPointEditor({
+    containerId:"description-points",
+    addButtonId:"add-description",
+    inputClass:"description-point",
+    removeClass:"remove-description",
+    placeholder:"Ex.: bateria de até 6 dias"
+  });
+  bindPointEditor({
+    containerId:"benefit-points",
+    addButtonId:"add-benefit",
+    inputClass:"benefit-point",
+    removeClass:"remove-benefit",
+    placeholder:"Ex.: áudio claro mesmo em chamadas"
+  });
+  bindPointEditor({
+    containerId:"problem-points",
+    addButtonId:"add-problem",
+    inputClass:"problem-point",
+    removeClass:"remove-problem",
+    placeholder:"Ex.: evita ficar preso a fios"
   });
 
   $("save-product").onclick=()=>{
-    const points=descriptionPointValues();
+    const points=pointValues(".description-point");
+    const benefits=pointValues(".benefit-point");
+    const problems=pointValues(".problem-point");
     state.product={
       name:$("product-name").value.trim(),
       price:$("product-price").value.trim(),
@@ -434,8 +480,8 @@
       liveOfferText:$("product-live-offer-text").value.trim(),
       promotionNote:$("product-promotion-note").value.trim(),
       descriptionPoints:points,
-      benefits:$("product-benefits").value.trim(),
-      problems:$("product-problems").value.trim(),
+      benefits:benefits.join("; "),
+      problems:problems.join("; "),
       included:$("product-included").value.trim()
     };
     $("active-product-name").textContent=state.product.name;$("active-product-desc").textContent=points.slice(0,2).join(" • ")||"Sem descrição";$("active-product-price").textContent=state.product.price?"R$ "+state.product.price:"—";$("active-product-discount").textContent=state.product.discount||"";$("product-save-status").textContent="Produto salvo e ativado.";toast("Produto ativo atualizado");
