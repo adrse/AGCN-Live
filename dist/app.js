@@ -7,22 +7,31 @@
     monitoring:false, presenter:"stopped", startedAt:null, timer:null, autoTimer:null,
     viewers:0, likes:0, shares:0, comments:[], queue:[], currentSpeech:null,
     speechTick:null, speechEnd:null, salesIndex:0, interruptedTopic:null,
-    reactiveStreak:0, productWindowUntil:0,
+    reactiveStreak:0, productWindowUntil:0, lastSalesTopic:null,
+    recentSalesSpeeches:[], purchaseSignals:0,
     product:{
       name:"Fone de Ouvido Bluetooth TWS", price:"129,90", regularPrice:"199,90",
       discount:"35% OFF", compatibility:"iPhone e Android",
       battery:"até 6 horas de uso por carga", warranty:"", shipping:"",
+      stock:"7", liveOffer:true, liveOfferText:"Oferta exclusiva da LIVE",
+      promotionNote:"",
       descriptionPoints:["Som de alta qualidade","Bateria de longa duração","Compatível com iPhone e Android"],
-      benefits:"Áudio claro; sem fio; estojo compacto; fácil pareamento; confortável para uso diário"
+      benefits:"Áudio claro; sem fio; estojo compacto; fácil pareamento; confortável para uso diário",
+      problems:"Ficar preso a fios; dificuldade para ouvir áudio com liberdade no dia a dia",
+      included:"Fone TWS; estojo de carregamento; cabo de carregamento"
     }
   };
 
   const topics = [
-    {key:"benefit",label:"Destacar benefícios do produto"},
-    {key:"battery",label:"Falar de bateria e uso"},
-    {key:"compatibility",label:"Mostrar compatibilidade"},
-    {key:"value",label:"Reforçar oferta e preço"},
-    {key:"cta",label:"Chamar para ação"}
+    {key:"benefit",label:"Benefício → utilidade prática"},
+    {key:"pain",label:"Dor → solução"},
+    {key:"bundle",label:"Empilhar valor do kit"},
+    {key:"battery",label:"Característica → benefício"},
+    {key:"compatibility",label:"Quebrar objeção"},
+    {key:"value",label:"Ancorar preço e desconto"},
+    {key:"scarcity",label:"Escassez real"},
+    {key:"social",label:"Prova social real"},
+    {key:"cta",label:"Fechamento / CTA"}
   ];
 
   const quickUsers = ["Maria","Lucas","Ana","Carlos","Beatriz","Rafael","Nadjane","Gabriel"];
@@ -41,7 +50,8 @@
   function classify(text){
     const t=text.toLowerCase();
     let intent="comentário",topic="general",priority=35,label="Baixa";
-    if(/quero|comprar|manda.*link|onde compro|como compra/.test(t)){intent="Intenção de compra";topic="buy";priority=100;label="Alta";}
+    if(/comprei|finalizei|peguei um|peguei uma|garanti/.test(t)){intent="Compra confirmada";topic="purchase";priority=74;label="Média";}
+    else if(/quero|comprar|manda.*link|onde compro|como compra/.test(t)){intent="Intenção de compra";topic="buy";priority=100;label="Alta";}
     else if(/preço|preco|valor|quanto custa/.test(t)){intent="Pergunta de preço";topic="price";priority=95;label="Alta";}
     else if(/serve|compat|iphone|android/.test(t)){intent="Compatibilidade";topic="compatibility";priority=82;label="Média";}
     else if(/bateria|dura|horas/.test(t)){intent="Duração da bateria";topic="battery";priority=78;label="Média";}
@@ -67,7 +77,9 @@
       case "shipping":
         return p.shipping ? `${name}${p.shipping}.` : null;
       case "buy":
-        return `${name}boa! Se quiser pegar, confere o produto fixado na LIVE.`;
+        return `${name}se já decidiu, confere o produto fixado e finaliza por ali.`;
+      case "purchase":
+        return `${name}parabéns pela compra! Boa escolha.`;
       case "benefit":
         return firstBenefit ? `${name}${firstBenefit}.` : null;
       default:
@@ -75,23 +87,138 @@
     }
   }
 
-  function proactiveText(topic){
+  function splitItems(value){
+    return String(value||"").split(/[;\n|]+/).map(x=>x.trim()).filter(Boolean);
+  }
+
+  function moneyNumber(value){
+    const n=Number(String(value||"").replace(/\./g,"").replace(",",".").replace(/[^0-9.-]/g,""));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function normalizedSpeech(text){
+    return String(text||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+  }
+
+  function tooSimilarToRecent(text){
+    const now=normalizedSpeech(text);
+    const nowWords=now.split(" ").filter(Boolean);
+    for(const prevRaw of state.recentSalesSpeeches.slice(-4)){
+      const prev=normalizedSpeech(prevRaw);
+      const prevWords=prev.split(" ").filter(Boolean);
+      if(nowWords.length>=3 && prevWords.length>=3 && nowWords.slice(0,3).join(" ")===prevWords.slice(0,3).join(" ")) return true;
+      const a=new Set(nowWords.filter(w=>w.length>=4));
+      const b=new Set(prevWords.filter(w=>w.length>=4));
+      const union=new Set([...a,...b]);
+      const inter=[...a].filter(x=>b.has(x)).length;
+      if(union.size && inter/union.size>=0.78) return true;
+    }
+    return false;
+  }
+
+  function hasRealScarcity(){
+    const p=state.product;
+    const stock=Number(p.stock);
+    if(Number.isFinite(stock) && stock>=1 && stock<=10) return true;
+    if(p.liveOffer) return true;
+    return /últim|resta|relâmp|termina|encerra|só hoje|exclusiv|esgot|limitad/i.test(p.promotionNote||"");
+  }
+
+  function chooseSalesTopic(){
+    const p=state.product;
+    const stock=Number(p.stock);
+    const available={
+      benefit:splitItems(p.benefits).length>0 || (p.descriptionPoints||[]).length>0,
+      pain:splitItems(p.problems).length>0,
+      bundle:splitItems(p.included).length>0,
+      battery:!!p.battery,
+      compatibility:!!p.compatibility,
+      value:!!p.price,
+      scarcity:hasRealScarcity(),
+      social:state.purchaseSignals>0,
+      cta:true
+    };
+
+    const conversion=["scarcity","value","social","pain","bundle","cta"];
+    if(state.salesIndex>0 && state.salesIndex%3===2){
+      for(const key of conversion){
+        if(available[key] && key!==state.lastSalesTopic) return key;
+      }
+    }
+
+    for(let i=0;i<topics.length;i++){
+      const key=topics[(state.salesIndex+i)%topics.length].key;
+      if(available[key] && key!==state.lastSalesTopic) return key;
+    }
+    return "cta";
+  }
+
+  function proactiveText(topic,variant=0){
     const p=state.product;
     const points=p.descriptionPoints||[];
-    const point=points.length ? points[state.salesIndex % points.length] : "";
-    const firstBenefit=(p.benefits||"").split(/[;\n|]+/).map(x=>x.trim()).find(Boolean) || "";
-    if(topic==="battery" && p.battery) return `E olha a bateria dele: ${p.battery}. Dá pra usar bem tranquilo no dia a dia.`;
-    if(topic==="compatibility" && p.compatibility) return `Outra coisa boa: ele funciona com ${p.compatibility}. Então é bem prático pra usar no dia a dia.`;
-    if(topic==="value" && p.price) return `Hoje ele tá por R$ ${p.price}${p.discount ? ", com "+p.discount : ""}. Vale olhar com carinho essa oferta.`;
-    if(topic==="cta") return `Se curtiu o ${p.name}, dá uma olhada no produto fixado aí na LIVE.`;
-    if(point) return `Olha esse detalhe do ${p.name}: ${point}.`;
-    if(firstBenefit) return `Uma coisa legal nele é ${firstBenefit}.`;
-    return `Olha só o ${p.name}. Vou te mostrando os principais pontos dele por aqui.`;
+    const benefits=splitItems(p.benefits);
+    const problems=splitItems(p.problems);
+    const included=splitItems(p.included);
+    const point=points.length ? points[(state.salesIndex+variant)%points.length] : "";
+    const benefit=benefits.length ? benefits[(state.salesIndex+variant)%benefits.length] : point;
+    const problem=problems.length ? problems[(state.salesIndex+variant)%problems.length] : "";
+    const stock=Number(p.stock);
+
+    if(topic==="scarcity"){
+      if(Number.isFinite(stock) && stock>=1 && stock<=10){
+        const openings=["Agora presta atenção nisso:","Só pra você ter noção,","E aqui tem um detalhe importante:"];
+        return `${openings[variant%openings.length]} são ${stock} unidades disponíveis. Se você já decidiu, não deixa pra depois.`;
+      }
+      if(p.liveOffer && p.liveOfferText){
+        return `${p.liveOfferText}. Se essa condição fez sentido pra você, aproveita enquanto ela está ativa na LIVE.`;
+      }
+      if(p.promotionNote) return `${p.promotionNote}. Então, se você já tava pensando em pegar, esse é o momento de conferir.`;
+    }
+
+    if(topic==="value" && p.price){
+      if(p.regularPrice){
+        return `Olha a diferença de valor: o preço normal é R$ ${p.regularPrice} e aqui tá R$ ${p.price}${p.discount ? ", com "+p.discount : ""}. É aí que essa oferta começa a ficar interessante.`;
+      }
+      return `Hoje ele tá por R$ ${p.price}${p.discount ? ", com "+p.discount : ""}. Pelo que entrega, é uma condição bem forte.`;
+    }
+
+    if(topic==="social" && state.purchaseSignals>0){
+      return `Já tivemos ${state.purchaseSignals} confirmação${state.purchaseSignals===1?"":"ões"} de compra aqui no teste. Tem gente aproveitando enquanto a apresentação tá rolando.`;
+    }
+
+    if(topic==="pain" && problem){
+      return `Se o que te incomoda é ${problem.toLowerCase()}, aí esse produto começa a fazer sentido: ${benefit || point || "ele foi pensado pra facilitar o uso no dia a dia"}.`;
+    }
+
+    if(topic==="bundle" && included.length){
+      const sample=included.slice(0,3).join(", ");
+      return `E não é só o ${p.name}: junto você leva ${sample}. Esse conjunto aumenta bastante o valor do que você tá levando.`;
+    }
+
+    if(topic==="battery" && p.battery){
+      const starts=["Na prática, a bateria ajuda bastante:","Pra uso no dia a dia, olha isso:","Sobre autonomia, um ponto bom é:"];
+      return `${starts[variant%starts.length]} ${p.battery}. Você não fica tão preso a carregamento toda hora.`;
+    }
+
+    if(topic==="compatibility" && p.compatibility){
+      return `Pra não ter dúvida antes de comprar: ele funciona com ${p.compatibility}. Isso já elimina uma das principais dúvidas de compatibilidade.`;
+    }
+
+    if(topic==="benefit"){
+      const starts=["O que chama atenção aqui é","Uma coisa que faz diferença no uso é","Pensando no dia a dia,"];
+      if(benefit) return `${starts[variant%starts.length]} ${benefit.toLowerCase()}. É aquele tipo de detalhe que você percebe usando.`;
+      if(point) return `${starts[variant%starts.length]} ${point.toLowerCase()}.`;
+    }
+
+    if(topic==="cta") return `Se o ${p.name} encaixou no que você precisa, confere o produto fixado e já finaliza enquanto a condição da LIVE estiver valendo.`;
+
+    return `Vou te mostrar outro ponto do ${p.name}: ${point || benefit || "ele foi pensado pra facilitar o uso no dia a dia"}.`;
   }
 
   function enqueueComment(user,text){
     const item={id:Date.now()+Math.random(),user:user||"Visitante",text,at:Date.now(),decision:classify(text)};
     state.comments.unshift(item); state.comments=state.comments.slice(0,30);
+    if(item.decision.topic==="purchase") state.purchaseSignals+=1;
 
     // Pergunta sem resposta conhecida aparece no chat, mas não vira fala.
     const answer=responseFor(item,item.decision);
@@ -145,11 +272,29 @@
 
   function proactive(){
     if(state.currentSpeech || state.presenter!=="running") return;
-    let topic;
-    if(state.interruptedTopic){ topic=state.interruptedTopic; state.interruptedTopic=null; }
-    else { topic=topics[state.salesIndex % topics.length].key; state.salesIndex++; }
+
+    let topic=state.interruptedTopic || chooseSalesTopic();
+    state.interruptedTopic=null;
+
+    let text="";
+    let chosen=topic;
+    for(let attempt=0;attempt<5;attempt++){
+      text=proactiveText(chosen,attempt);
+      if(text && !tooSimilarToRecent(text)) break;
+      state.salesIndex+=1;
+      chosen=chooseSalesTopic();
+    }
+
+    if(!text) return;
     if(!inProductWindow()) state.reactiveStreak=0;
-    speak(proactiveText(topic),{type:"proactive",topic});
+
+    state.lastSalesTopic=chosen;
+    state.salesIndex+=1;
+    state.recentSalesSpeeches.push(text);
+    state.recentSalesSpeeches=state.recentSalesSpeeches.slice(-8);
+
+    speak(text,{type:"proactive",topic:chosen});
+    renderTopics();
     renderCadence();
   }
 
@@ -208,7 +353,13 @@
     root.className="queue-list"; root.innerHTML=state.queue.slice(0,8).map((c,i)=>`<div class="queue-item"><div><b>${i+1}. ${escapeHTML(c.decision.intent)}</b><p>“${escapeHTML(c.text)}”</p></div><span class="badge ${c.decision.label==="Alta"?"high":c.decision.label==="Média"?"medium":"low"}">${c.decision.label}</span></div>`).join("");
   }
   function renderTopics(){
-    $("next-topics").innerHTML=topics.slice(0,3).map((t,i)=>`<div>${i+1}. ${t.label}</div>`).join("");
+    const currentIndex=Math.max(0,state.salesIndex%topics.length);
+    const next=[];
+    for(let i=0;i<topics.length && next.length<3;i++){
+      const t=topics[(currentIndex+i)%topics.length];
+      if(t.key!==state.lastSalesTopic) next.push(t);
+    }
+    $("next-topics").innerHTML=next.map((t,i)=>`<div>${i+1}. ${t.label}</div>`).join("");
   }
   function updateCPM(){
     const cutoff=Date.now()-60000; const n=state.comments.filter(c=>c.at>=cutoff).length;
@@ -269,7 +420,24 @@
 
   $("save-product").onclick=()=>{
     const points=descriptionPointValues();
-    state.product={name:$("product-name").value.trim(),price:$("product-price").value.trim(),regularPrice:$("product-regular-price").value.trim(),discount:$("product-discount").value.trim(),compatibility:$("product-compatibility").value.trim(),battery:$("product-battery").value.trim(),warranty:$("product-warranty").value.trim(),shipping:$("product-shipping").value.trim(),descriptionPoints:points,benefits:$("product-benefits").value.trim()};
+    state.product={
+      name:$("product-name").value.trim(),
+      price:$("product-price").value.trim(),
+      regularPrice:$("product-regular-price").value.trim(),
+      discount:$("product-discount").value.trim(),
+      compatibility:$("product-compatibility").value.trim(),
+      battery:$("product-battery").value.trim(),
+      warranty:$("product-warranty").value.trim(),
+      shipping:$("product-shipping").value.trim(),
+      stock:$("product-stock").value.trim(),
+      liveOffer:$("product-live-offer").checked,
+      liveOfferText:$("product-live-offer-text").value.trim(),
+      promotionNote:$("product-promotion-note").value.trim(),
+      descriptionPoints:points,
+      benefits:$("product-benefits").value.trim(),
+      problems:$("product-problems").value.trim(),
+      included:$("product-included").value.trim()
+    };
     $("active-product-name").textContent=state.product.name;$("active-product-desc").textContent=points.slice(0,2).join(" • ")||"Sem descrição";$("active-product-price").textContent=state.product.price?"R$ "+state.product.price:"—";$("active-product-discount").textContent=state.product.discount||"";$("product-save-status").textContent="Produto salvo e ativado.";toast("Produto ativo atualizado");
   };
 
